@@ -13,6 +13,7 @@ def print_segments(ref_sequence, sequences):
         print(sequence)
     print()
 
+
 if __name__ == "__main__":
     chromosome_name = "18"
 
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh37.vcf.gz"
 
     # ---- Nanopore GUPPY (dev machine) --------------------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
+    bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
     reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
     vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
     bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
@@ -68,18 +69,21 @@ if __name__ == "__main__":
 
         print_segments(ref_sequence, sequences)
 
-        graph = poagraph.POAGraph(ref_sequence, "ref")
+        init_sequence = sequences[0]
+        init_label = read_ids[0]
+
+        graph = poagraph.POAGraph(init_sequence, "0")
+
         for i in range(len(sequences)):
             sequence = sequences[i]
             read_id = read_ids[i]
 
             # print("sequence\t", sequence)
             # print("label\t\t", read_id)
-            #
             # print("length\t\t", len(sequence))
 
             alignment = seqgraphalignment.SeqGraphAlignment(sequence, graph,
-                                                            fastMethod=True,
+                                                            fastMethod=False,
                                                             globalAlign=True,
                                                             matchscore=1,
                                                             mismatchscore=-1,
@@ -94,5 +98,5 @@ if __name__ == "__main__":
         for read_id, alignstring in alignments:
             print("{0:15s} {1:s}".format(read_id, alignstring))
 
-        if p > 1:
+        if p > 10:
             exit()

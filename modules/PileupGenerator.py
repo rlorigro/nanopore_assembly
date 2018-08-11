@@ -2,7 +2,9 @@ from handlers.BamHandler import BamHandler
 from handlers.FastaHandler import FastaHandler
 from collections import defaultdict
 
+
 DEFAULT_MIN_MAP_QUALITY = 5
+
 
 class PileupGenerator:
     def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
@@ -16,6 +18,8 @@ class PileupGenerator:
 
         self.read_start_indices = dict()
         self.read_end_indices = dict()
+        self.read_alignment_starts = dict()
+        self.read_alignment_ends = dict()
 
         self.sequences = defaultdict(list)
         self.qualities = defaultdict(list)
@@ -65,8 +69,11 @@ class PileupGenerator:
             read_quality_segment = read_quality[read_index:read_index + length]
             read_sequence_segment = read_sequence[read_index:read_index + length]
 
-            if cigar_code != 0 and cigar_code != 5 and found_valid_cigar is False:
-                read_index += length
+            # skip parsing the first segment if it is not a match
+            if cigar_code != 0 and found_valid_cigar is False:
+                # only increment the read index if the non-match cigar code is INS or SOFTCLIP
+                if cigar_code == 1 or cigar_code == 4:
+                    read_index += length
                 continue
             found_valid_cigar = True
 
@@ -88,9 +95,18 @@ class PileupGenerator:
                 start_index = self.read_start_indices[read_id]
                 end_index = self.read_end_indices[read_id]
 
-                sequence = read_sequence[start_index:end_index + 1]
-                self.sequences[read_id] = sequence
+                segment_alignment_start = self.read_alignment_starts[read_id]
+                segment_alignment_end = self.read_alignment_ends[read_id]
 
+                # to simulate Paolo Carnevali's data, all reads should span the full region, match on start and end pos.
+                if segment_alignment_start == self.start_position and segment_alignment_end == self.end_position:
+                    sequence = read_sequence[start_index:end_index + 1]
+                    self.sequences[read_id] = sequence
+
+                # else:
+                #     print("incomplete read segment")
+                #     print("expected interval:", self.start_position, self.end_position)
+                #     print("segment interval:", segment_alignment_start, segment_alignment_end)
                 # if len(sequence) == 0:
                 #     print()
                 #     print("***WARNING***: EMPTY SEQUENCE!")
@@ -134,10 +150,12 @@ class PileupGenerator:
             # update start position
             if i >= self.start_position and read_id not in self.read_start_indices:
                 self.read_start_indices[read_id] = index
+                self.read_alignment_starts[read_id] = i
 
             # update end position
             if i <= self.end_position:
                 self.read_end_indices[read_id] = index
+                self.read_alignment_ends[read_id] = i
             else:
                 read_complete = True
                 break
