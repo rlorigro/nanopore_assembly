@@ -342,6 +342,7 @@ class POAGraph(object):
         path   = []
         bases  = []
         labels = []
+
         while pos is not None and pos > -1:
             path.append(pos)
             bases.append(self.nodedict[pos].base)
@@ -382,7 +383,7 @@ class POAGraph(object):
 
         return list(zip(allpaths, allbases, alllabels))
 
-    def generateAlignmentStrings(self):
+    def generateAlignmentStrings(self, consensus=True):
         """ Return a list of strings corresponding to the alignments in the graph """
 
         # Step 1: assign node IDs to columns in the output
@@ -412,20 +413,23 @@ class POAGraph(object):
             seqnames.append(label)
             curnode_id = start
             charlist = ['-']*ncolumns
+
             while curnode_id is not None:
                 node = self.nodedict[curnode_id]
                 charlist[column_index[curnode_id]] = node.base
                 curnode_id = node.nextNode(label)
+
             alignstrings.append("".join(charlist))
 
-        # Step 3: Same as step 2, but with consensus sequences
-        consenses = self.allConsenses()
-        for i, consensus in enumerate(consenses):
-            seqnames.append('Consensus'+str(i))
-            charlist = ['-']*ncolumns
-            for path, base in zip(consensus[0], consensus[1]):
-                charlist[column_index[path]] = base
-            alignstrings.append("".join(charlist))
+        if consensus:
+            # Step 3: Same as step 2, but with consensus sequences
+            consenses = self.allConsenses()
+            for i, consensus in enumerate(consenses):
+                seqnames.append('Consensus'+str(i))
+                charlist = ['-']*ncolumns
+                for path, base in zip(consensus[0], consensus[1]):
+                    charlist[column_index[path]] = base
+                alignstrings.append("".join(charlist))
 
         return list(zip(seqnames, alignstrings))
 
@@ -493,7 +497,7 @@ class POAGraph(object):
                     // create a network
                   """
         outfile.write(textwrap.dedent(header[1:]))
-        lines = self.jsOutput() 
+        lines = self.jsOutput()
         for line in lines:
             outfile.write(line+'\n')
         footer = """
