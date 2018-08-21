@@ -195,6 +195,8 @@ class POAGraph(object):
                     continue
 
                 successors = [s for s in self.nodedict[nodeID].outEdges.keys() if s not in completed]
+                successors += [s for s in self.nodedict[nodeID].alignedTo if s not in completed]
+                successors = list(set(successors))
                 started.add(nodeID)
                 stack.append(nodeID)
                 stack.extend(successors)
@@ -342,7 +344,6 @@ class POAGraph(object):
         path   = []
         bases  = []
         labels = []
-
         while pos is not None and pos > -1:
             path.append(pos)
             bases.append(self.nodedict[pos].base)
@@ -383,7 +384,7 @@ class POAGraph(object):
 
         return list(zip(allpaths, allbases, alllabels))
 
-    def generateAlignmentStrings(self, consensus=True):
+    def generateAlignmentStrings(self, generate_consensus=True):
         """ Return a list of strings corresponding to the alignments in the graph """
 
         # Step 1: assign node IDs to columns in the output
@@ -392,6 +393,7 @@ class POAGraph(object):
         column_index = {}
         current_column = 0
 
+        # go through nodes in toposort order
         ni = self.nodeiterator()
         for node in ni():
             other_columns = [column_index[other] for other in node.alignedTo if other in column_index]
@@ -413,15 +415,13 @@ class POAGraph(object):
             seqnames.append(label)
             curnode_id = start
             charlist = ['-']*ncolumns
-
             while curnode_id is not None:
                 node = self.nodedict[curnode_id]
                 charlist[column_index[curnode_id]] = node.base
                 curnode_id = node.nextNode(label)
-
             alignstrings.append("".join(charlist))
 
-        if consensus:
+        if generate_consensus:
             # Step 3: Same as step 2, but with consensus sequences
             consenses = self.allConsenses()
             for i, consensus in enumerate(consenses):

@@ -19,34 +19,15 @@ if __name__ == "__main__":
 
     seqNo = 0
     fasta = simplefasta.readfasta(args.infile)
-
-    print("not args.simple", not args.simple)
-    print("args.globalAlign", args.globalAlign)
-    print("args.match", args.match)
-    print("args.mismatch", args.mismatch)
-    print("args.gap", args.gap)
-
-    print("length",len(fasta))
-    print("type",type(fasta))
-
     graph = poagraph.POAGraph(fasta[0][1], fasta[0][0])
-    
-    print("INITIALIZATION", fasta[0][1], fasta[0][0])
-    
     for label, sequence in fasta[1:]:
-        print("label",label)
-        print("sequence",sequence)
-        print(type(sequence))
-        
         alignment = seqgraphalignment.SeqGraphAlignment(sequence, graph, fastMethod=not args.simple,
                                                         globalAlign=args.globalAlign,
                                                         matchscore=args.match, mismatchscore=args.mismatch,
                                                         gapscore=args.gap)
-        
         graph.incorporateSeqAlignment(alignment, sequence, label)
 
     alignments = graph.generateAlignmentStrings()
-    
     for label, alignstring in alignments:
         print("{0:15s} {1:s}".format(label, alignstring))
 
