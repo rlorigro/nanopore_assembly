@@ -4,11 +4,15 @@ from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
 from handlers.BamHandler import BamHandler
 from handlers.TsvHandler import TsvHandler
+from handlers.FileManager import FileManager
 from poapy import seqgraphalignment
 from poapy import poagraph
 from matplotlib import pyplot
+from datetime import datetime
+from tqdm import tqdm
 import numpy
 import math
+import os.path
 
 
 sequence_to_float = {"-":0,
@@ -46,6 +50,36 @@ def print_segments(ref_sequence, sequences):
     print()
 
 
+def visualize_matrix(matrix):
+    pyplot.imshow(matrix, cmap="viridis")
+    pyplot.show()
+
+
+def get_current_timestamp():
+    datetime_string = '-'.join(list(map(str, datetime.now().timetuple()))[:-1])
+
+    return datetime_string
+
+
+def save_training_data(output_dir, pileup_matrix, reference_matrix, chromosome_name, start):
+    array_file_extension = ".npz"
+
+    # ensure chromosomal directory exists
+    chromosomal_output_dir = os.path.join(output_dir, chromosome_name)
+    if not os.path.exists(chromosomal_output_dir):
+        FileManager.ensure_directory_exists(chromosomal_output_dir)
+
+    # generate unique filename and path
+    filename = chromosome_name + "_" + str(start)
+
+    output_path_prefix = os.path.join(chromosomal_output_dir, filename)
+
+    data_path = output_path_prefix + "_matrix" + array_file_extension
+
+    # write numpy arrays
+    numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix)
+
+
 def convert_aligned_reference_to_one_hot(reference_alignment):
     """
     given a reference sequence, generate an lx5 matrix of one-hot encodings where l=sequence length and 5 is the # of
@@ -63,10 +97,7 @@ def convert_aligned_reference_to_one_hot(reference_alignment):
 
         matrix[index,c] = 1
 
-    # print(matrix)
-
-    pyplot.imshow(matrix, cmap="viridis")
-    pyplot.show()
+    return matrix
 
 
 def convert_reference_to_one_hot(reference_sequence):
@@ -83,10 +114,7 @@ def convert_reference_to_one_hot(reference_sequence):
 
         matrix[index,c] = 1
 
-    # print(matrix)
-
-    pyplot.imshow(matrix, cmap="viridis")
-    pyplot.show()
+    return matrix
 
 
 def convert_collapsed_alignments_to_matrix(alignments, character_counts):
@@ -118,11 +146,6 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts):
                 repeat_matrix[a,b] = character_counts[a][c]
                 c += 1
 
-    pyplot.imshow(base_matrix, cmap="viridis")
-    pyplot.show()
-    pyplot.imshow(repeat_matrix, cmap="viridis")
-    pyplot.show()
-
     return base_matrix, repeat_matrix
 
 
@@ -141,11 +164,6 @@ def convert_alignments_to_matrix(alignments):
 
         for b,character in enumerate(alignment_string):
             matrix[a,b] = sequence_to_float[character]*SCALE_FACTOR
-
-    # print(matrix)
-
-    pyplot.imshow(matrix, cmap="viridis")
-    pyplot.show()
 
     return matrix
 
@@ -222,7 +240,7 @@ def partial_order_alignment(ref_sequence, sequences, graph=None, include_referen
 
         graph.incorporateSeqAlignment(alignment, ref_sequence, "ref")
 
-    alignments = graph.generateAlignmentStrings(consensus=False)
+    alignments = graph.generateAlignmentStrings(generate_consensus=False)
 
     return alignments, graph
 
@@ -253,6 +271,10 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                        reads=reads)
 
     sequence_dictionary = pileup_generator.get_read_segments()
+
+    if len(sequence_dictionary.keys()) == 0:
+        exit("No reads found at position")
+
     read_ids, sequences = zip(*sequence_dictionary.items())
 
     return ref_sequence, read_ids, sequences
@@ -529,7 +551,7 @@ def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromo
             # convert_reference_to_one_hot(ref_sequence)
             convert_aligned_reference_to_one_hot(ref_alignment)
 
-            assert ref_alignment[0][1].replace("-",'') == ref_sequence, "Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end)
+            assert ref_alignment[0][1].replace("-", '') == ref_sequence, "Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end)
 
             if w == 0:
                 with open("test.html", 'w') as file:
@@ -604,7 +626,7 @@ def generate_collapsed_data(bam_file_path, reference_file_path, vcf_path, bed_pa
                 exit()
 
 
-def test_window(bam_file_path, reference_file_path, chromosome_name, window):
+def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_graph_html=False):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -617,9 +639,7 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window):
     fasta_handler = FastaHandler(reference_file_path)
 
     pileup_start = window[0]
-    pileup_end = window[1]      # add random variation here
-
-    print(pileup_start, pileup_end)
+    pileup_end = window[1]      # add random variation here ?
 
     ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
                                                              bam_handler=bam_handler,
@@ -627,59 +647,106 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window):
                                                              pileup_start=pileup_start,
                                                              pileup_end=pileup_end)
 
-    print_segments(ref_sequence, sequences)
-
     alignments, graph = partial_order_alignment(ref_sequence, sequences, include_reference=True)
 
     ref_alignment = alignments[-1:]
     alignments = alignments[:-1]
 
-    for label, alignstring in alignments:
-        print("{0:15s} {1:s}".format(label, alignstring))
+    pileup_matrix = convert_alignments_to_matrix(alignments)
+    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
 
-    for label, alignstring in ref_alignment:
-        print("{0:15s} {1:s}".format(label, alignstring))
-
-    convert_alignments_to_matrix(alignments)
-    # convert_alignments_to_matrix(ref_alignment)
-    # convert_reference_to_one_hot(ref_sequence)
-    convert_aligned_reference_to_one_hot(ref_alignment)
+    # PRINT RESULTS
+    # print_segments(ref_sequence, sequences)
+    #
+    # for label, alignstring in alignments:
+    #     print("{0:15s} {1:s}".format(label, alignstring))
+    #
+    # for label, alignstring in ref_alignment:
+    #     print("{0:15s} {1:s}".format(label, alignstring))
+    #
+    # visualize_matrix(pileup_matrix)
+    # visualize_matrix(reference_matrix)
 
     if ref_alignment[0][1].replace("-",'') != ref_sequence:
         print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
+        print("unaligned:\t",ref_sequence)
+        print("aligned:\t",ref_alignment[0][1].replace("-",''))
+        visualize_matrix(pileup_matrix)
 
-    print("unaligned:\t",ref_sequence)
-    print("aligned:\t",ref_alignment[0][1].replace("-",''))
+    if save_graph_html:
+        with open("test.html", 'w') as file:
+            graph.htmlOutput(file)
 
-    with open("test.html", 'w') as file:
-        graph.htmlOutput(file)
+    save_training_data(output_dir=output_dir,
+                       pileup_matrix=pileup_matrix,
+                       reference_matrix=reference_matrix,
+                       chromosome_name=chromosome_name,
+                       start=pileup_start)
 
+
+def test_region(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir):
+    length = region[1] - region[0]
+    windows = chunk_interval(interval=region, chunk_size=window_size, length=length)
+
+    for window in tqdm(windows):
+        test_window(bam_file_path=bam_file_path,
+                    reference_file_path=reference_file_path,
+                    chromosome_name=chromosome_name,
+                    window=window,
+                    output_dir=output_dir)
 
 
 def main():
-    chromosome_name = "18"
+    output_root_dir = "output/"
+    instance_dir = "run_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    # ---- Illumina (laptop) --------------------------------------------------
+    bam_file_path = "/Users/saureous/data/Platinum/chr1.sorted.bam"
+    reference_file_path = "/Users/saureous/data/Platinum/chr1.fa"
+    vcf_path = "/Users/saureous/data/Platinum/NA12878_S1.genome.vcf.gz"
+    bed_path = "/Users/saureous/data/Platinum/chr1_confident.bed"
 
     # ---- GIAB (dev machine) -------------------------------------------------
     # bam_file_path = "/home/ryan/data/GIAB/NA12878_GIAB_30x_GRCh37.sorted.bam"
     # reference_file_path = "/home/ryan/data/GIAB/GRCh37_WG.fa"
     # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh37.vcf.gz"
+    # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
 
     # ---- Nanopore GUPPY (dev machine) --------------------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
-    reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
-    vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
-    bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
-
-    chromosome_name = "chr" + chromosome_name
+    # bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
+    # reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
+    # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
+    # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
     # -------------------------------------------------------------------------
+
+    chromosome_name = "1"
+    chromosome_name = "chr" + chromosome_name
 
     start_position = 0
     end_position = 250000000
 
+    # ---- TEST window --------------------------------------------------------
+    window = [715118, 715138]       # illumina laptop test region
+    # window = [246567, 246587]     # previously failing test case for collapsed reads
+
     test_window(bam_file_path=bam_file_path,
                 reference_file_path=reference_file_path,
                 chromosome_name=chromosome_name,
-                window=[246567,246587])
+                window=window,
+                output_dir=output_dir)
+
+    # ---- TEST window --------------------------------------------------------
+    # region = [715118, 716138]  # illumina laptop test region
+    #
+    # test_region(bam_file_path=bam_file_path,
+    #             reference_file_path=reference_file_path,
+    #             chromosome_name=chromosome_name,
+    #             region=region,
+    #             window_size=20,
+    #             output_dir=output_dir)
+
+    # -------------------------------------------------------------------------
 
     # generate_data(bam_file_path=bam_file_path,
     #               reference_file_path=reference_file_path,
