@@ -7,12 +7,13 @@ DEFAULT_MIN_MAP_QUALITY = 5
 
 
 class PileupGenerator:
-    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
+    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads, max_coverage):
         # candidate finder includes end position, so should the reference sequence
         self.chromosome_name = chromosome_name
         self.start_position = start_position
         self.end_position = end_position
         self.ref_sequence = ref_sequence
+        self.max_coverage = max_coverage
 
         self.reads = reads
 
@@ -26,12 +27,15 @@ class PileupGenerator:
         self.cigars = defaultdict(list)
 
     def get_read_segments(self):
-        for read in self.reads:
+        for r,read in enumerate(self.reads):
             if read.mapping_quality >= DEFAULT_MIN_MAP_QUALITY and read.is_secondary is False \
                     and read.is_supplementary is False and read.is_unmapped is False and read.is_qcfail is False:
 
                 read.query_name = read.query_name + '_1' if read.is_read1 else read.query_name + '_2'
                 self.get_aligned_segment_from_read(read)
+
+            if r > self.max_coverage:
+                break
 
         return self.sequences
 

@@ -31,6 +31,8 @@ MATCH_SCORE = 4
 MISMATCH_SCORE = -4
 GAP_SCORE = -5
 
+MAX_COVERAGE = 50
+
 
 def print_collapsed_segments(sequences, character_counts):
     for i in range(len(sequences)):
@@ -123,7 +125,7 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts):
     :param alignments:
     :return:
     """
-    n = len(alignments)
+    n = MAX_COVERAGE
     m = len(alignments[0][1])
 
     base_matrix = numpy.zeros([n, m])
@@ -155,7 +157,7 @@ def convert_alignments_to_matrix(alignments):
     :param alignments:
     :return:
     """
-    n = len(alignments)
+    n = MAX_COVERAGE
     m = len(alignments[0][1])
 
     matrix = numpy.zeros([n, m])
@@ -196,10 +198,6 @@ def collapse_repeats(sequences):
 
         character_sequences.append(character_sequence)
         character_counts.append(character_count)
-
-        # print(sequence)
-        # print(''.join(character_sequence))
-        # print(''.join(map(str,character_count)))
 
     return character_sequences, character_counts
 
@@ -268,7 +266,8 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                        start_position=pileup_start,
                                        end_position=pileup_end,
                                        ref_sequence=ref_sequence,
-                                       reads=reads)
+                                       reads=reads,
+                                       max_coverage=MAX_COVERAGE)
 
     sequence_dictionary = pileup_generator.get_read_segments()
 
@@ -723,31 +722,31 @@ def main():
     chromosome_name = "1"
     chromosome_name = "chr" + chromosome_name
 
-    start_position = 0
-    end_position = 250000000
-
     # ---- TEST window --------------------------------------------------------
-    window = [715118, 715138]       # illumina laptop test region
-    # window = [246567, 246587]     # previously failing test case for collapsed reads
-
-    test_window(bam_file_path=bam_file_path,
-                reference_file_path=reference_file_path,
-                chromosome_name=chromosome_name,
-                window=window,
-                output_dir=output_dir)
-
-    # ---- TEST window --------------------------------------------------------
-    # region = [715118, 716138]  # illumina laptop test region
+    # window = [715118, 715138]       # illumina laptop test region
+    # # window = [246567, 246587]     # previously failing test case for collapsed reads
     #
-    # test_region(bam_file_path=bam_file_path,
+    # test_window(bam_file_path=bam_file_path,
     #             reference_file_path=reference_file_path,
     #             chromosome_name=chromosome_name,
-    #             region=region,
-    #             window_size=20,
+    #             window=window,
     #             output_dir=output_dir)
+
+    # ---- TEST window --------------------------------------------------------
+    region = [715118, 716138]  # illumina laptop test region
+
+    test_region(bam_file_path=bam_file_path,
+                reference_file_path=reference_file_path,
+                chromosome_name=chromosome_name,
+                region=region,
+                window_size=20,
+                output_dir=output_dir)
 
     # -------------------------------------------------------------------------
 
+    # start_position = 0
+    # end_position = 250000000
+    #
     # generate_data(bam_file_path=bam_file_path,
     #               reference_file_path=reference_file_path,
     #               vcf_path=vcf_path,
