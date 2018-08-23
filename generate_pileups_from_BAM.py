@@ -670,17 +670,19 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window, out
         print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
         print("unaligned:\t",ref_sequence)
         print("aligned:\t",ref_alignment[0][1].replace("-",''))
-        visualize_matrix(pileup_matrix)
+        # visualize_matrix(pileup_matrix)
+        # print(ref_sequence)
+        # print(sequences)
+    else:
+        save_training_data(output_dir=output_dir,
+                           pileup_matrix=pileup_matrix,
+                           reference_matrix=reference_matrix,
+                           chromosome_name=chromosome_name,
+                           start=pileup_start)
 
     if save_graph_html:
         with open("test.html", 'w') as file:
             graph.htmlOutput(file)
-
-    save_training_data(output_dir=output_dir,
-                       pileup_matrix=pileup_matrix,
-                       reference_matrix=reference_matrix,
-                       chromosome_name=chromosome_name,
-                       start=pileup_start)
 
 
 def test_region(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir):
@@ -701,10 +703,10 @@ def main():
     output_dir = os.path.join(output_root_dir, instance_dir)
 
     # ---- Illumina (laptop) --------------------------------------------------
-    bam_file_path = "/Users/saureous/data/Platinum/chr1.sorted.bam"
-    reference_file_path = "/Users/saureous/data/Platinum/chr1.fa"
-    vcf_path = "/Users/saureous/data/Platinum/NA12878_S1.genome.vcf.gz"
-    bed_path = "/Users/saureous/data/Platinum/chr1_confident.bed"
+    # bam_file_path = "/Users/saureous/data/Platinum/chr1.sorted.bam"
+    # reference_file_path = "/Users/saureous/data/Platinum/chr1.fa"
+    # vcf_path = "/Users/saureous/data/Platinum/NA12878_S1.genome.vcf.gz"
+    # bed_path = "/Users/saureous/data/Platinum/chr1_confident.bed"
 
     # ---- GIAB (dev machine) -------------------------------------------------
     # bam_file_path = "/home/ryan/data/GIAB/NA12878_GIAB_30x_GRCh37.sorted.bam"
@@ -713,16 +715,17 @@ def main():
     # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
 
     # ---- Nanopore GUPPY (dev machine) --------------------------------------
-    # bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
-    # reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
-    # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
-    # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
+    bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
+    reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
+    vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
+    bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
     # -------------------------------------------------------------------------
 
     chromosome_name = "1"
     chromosome_name = "chr" + chromosome_name
 
     # ---- TEST window --------------------------------------------------------
+
     # window = [715118, 715138]       # illumina laptop test region
     # # window = [246567, 246587]     # previously failing test case for collapsed reads
     #
@@ -732,7 +735,8 @@ def main():
     #             window=window,
     #             output_dir=output_dir)
 
-    # ---- TEST window --------------------------------------------------------
+    # ---- TEST region --------------------------------------------------------
+
     region = [715118, 716138]  # illumina laptop test region
 
     test_region(bam_file_path=bam_file_path,
@@ -742,7 +746,7 @@ def main():
                 window_size=20,
                 output_dir=output_dir)
 
-    # -------------------------------------------------------------------------
+    # ---- genomic run --------------------------------------------------------
 
     # start_position = 0
     # end_position = 250000000

@@ -23,6 +23,24 @@ def generate_sequence(length, character_pool):
     return sequence_string
 
 
+def get_alignment_by_label(alignments, label):
+    """
+    iterate through poapy alignment tuples to find an alignment with the specified label
+    :param alignments:
+    :return:
+    """
+    query_alignment = None
+
+    for alignment in alignments:
+        if alignment[0] == label:
+            query_alignment = alignment
+
+    if query_alignment is None:
+        exit("ERROR: query label not found in alignments")
+
+    return query_alignment
+
+
 def test_identical_sequences():
     character_pool = ["A","C","G","T"]
 
@@ -85,42 +103,63 @@ def generate_poa_graph(sequences):
 
 
 def test_order_of_alignment():
-    test_sequence = "ATATTGCAAGGCACACTAACA"
-    sequences = ["ATATTGTGTAAGGCACAATTAACA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATATTGCAAGGCACAATTCAACA",
-                 "ATATTACAGAGCACACTA",
-                 "GTATTGCAAGCAAGCACACAACAA",
-                 "ATATTGCAAGGCACACAACA",
-                 "ATATTGCAAGGCACACTAACAATAA",
-                 "ATATTTACAGGAGCACACACTAACA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATGTGCAAAGACACACTAACCA",
-                 "CTGTTACAAAAACTTTTAACA",
-                 "ATATTGCAAGACACACTAACA",
-                 "ATGTGCAAGAGCACATAACA",
-                 "ATATTTTAAGGCACACTAACA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATGTTACAGAGCACACTAACA",
-                 "ATATTGCAAGGCATA",
-                 "ATACTGTAAGGCACACTTAAACAACA",
-                 "ATATTGTAAGGCACACTTCAACA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATATACGTAAGGCACACTAAATA",
-                 "ATATTGCACACTAACA",
-                 "AATTAAAAAGGCATACTCCAATAA",
-                 "ATATTGCAAGGCCACACTGGTCAA",
-                 "ATGTTGCAAGGCACTAACA",
-                 "ATGTTGCAGGCACACTATA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATATTGCAAAGCACACTAACA",
-                 "ATATTGCAAGGCACAATTAACA",
-                 "ATGTTACAAGACACACTAATATAAA",
-                 "ATTTACAAACACTAACA",
-                 "ATATTGCAGAGCACTAACA",
-                 "ATATTGCAAGGCACACTCAACA",
-                 "ATATTGCAAGGCACACTAACA",
-                 "ATATTGCAAGGCACACTAATA"]
+    # test_sequence = "ATATTGCAAGGCACACTAACA"
+    # sequences = ["ATATTGTGTAAGGCACAATTAACA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATATTGCAAGGCACAATTCAACA",
+    #              "ATATTACAGAGCACACTA",
+    #              "GTATTGCAAGCAAGCACACAACAA",
+    #              "ATATTGCAAGGCACACAACA",
+    #              "ATATTGCAAGGCACACTAACAATAA",
+    #              "ATATTTACAGGAGCACACACTAACA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATGTGCAAAGACACACTAACCA",
+    #              "CTGTTACAAAAACTTTTAACA",
+    #              "ATATTGCAAGACACACTAACA",
+    #              "ATGTGCAAGAGCACATAACA",
+    #              "ATATTTTAAGGCACACTAACA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATGTTACAGAGCACACTAACA",
+    #              "ATATTGCAAGGCATA",
+    #              "ATACTGTAAGGCACACTTAAACAACA",
+    #              "ATATTGTAAGGCACACTTCAACA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATATACGTAAGGCACACTAAATA",
+    #              "ATATTGCACACTAACA",
+    #              "AATTAAAAAGGCATACTCCAATAA",
+    #              "ATATTGCAAGGCCACACTGGTCAA",
+    #              "ATGTTGCAAGGCACTAACA",
+    #              "ATGTTGCAGGCACACTATA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATATTGCAAAGCACACTAACA",
+    #              "ATATTGCAAGGCACAATTAACA",
+    #              "ATGTTACAAGACACACTAATATAAA",
+    #              "ATTTACAAACACTAACA",
+    #              "ATATTGCAGAGCACTAACA",
+    #              "ATATTGCAAGGCACACTCAACA",
+    #              "ATATTGCAAGGCACACTAACA",
+    #              "ATATTGCAAGGCACACTAATA"]
+
+    sequences = ['CTACTTGGGAGGCTGGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGGGGTGG',
+                 'CTACTTGGGAGGCTGGGGTGG',
+                 'CTACTTGGGAGGCTGGGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTTGGGAGGCTGAGGTGG',
+                 'CCACTTGAGTTGAGG',
+                 'CTACTTGGGAAGCTAGAGGTGG',
+                 'ATACTTAGGAGGCTGAGGTGG',
+                 'CCACTTTGGGAGGCTGAGGG']
+
+    test_sequence = "CTACTTGGGAGGCTGAGGTGG"
+
+    # sequences = ['TGGAATGAAAGAGGAAAAGAA', 'AGGAATGAAAGAGGAAAAGAA', 'TGGAATGAAAGAGAAAAGAA', 'TGAGATAAAGAAGAGGAAAAGAA',
+    #  'TGGAATGAAAGAGGAAA', 'TGGAATGAAAGAGTGAAAAGAA', 'TGGAAATGAAAGAGGGAAAAGAA', 'TAGTGAAAGAGGAAAAGAA',
+    #  'TGGAAGAAGAGGAAAAGAA', 'TGGGAATGAAAGGAGGAAAGAA', 'TGGAATATAGAGAAGAGGAAAAAGAAA', 'TGGAAATGAAAGAGGAAAAGAA']
+    #
+    # test_sequence = "GCCCAGAAATTCCAGACCAGC"
 
     minimum_error_set = sequences
     for i in range(1,len(sequences)):
@@ -138,16 +177,17 @@ def test_order_of_alignment():
             graph.incorporateSeqAlignment(alignment, test_sequence, "test")
 
             alignments = graph.generateAlignmentStrings()
+            test_alignment = get_alignment_by_label(alignments, "test")
 
-            if alignments[-2][1].replace("-","") != test_sequence:
+            if test_alignment[1].replace("-","") != test_sequence:
                 minimum_error_set = combination
                 break
 
-        if alignments[-2][1].replace("-", "") != test_sequence:
+        if test_alignment[1].replace("-", "") != test_sequence:
             print("before alignment")
             print("test", test_sequence)
             print("after alignment")
-            print(alignments[-2][0], alignments[-2][1].replace("-", ""))
+            print(test_alignment[0], test_alignment[1].replace("-", ""))
 
             minimum_error_set = combination
             break
@@ -166,8 +206,11 @@ def test_order_of_alignment_minimal():
     #              'ATGTGCAAGAGCACATAACA']
     # test_sequence = "ATATTGCAAGGCACACTAACA"
 
-    sequences = ["ATATTACAGAGCA", "ATGTGCAAAGACACACT"]
-    test_sequence = "ATATTGCAAGGCACAC"
+    # sequences = ['CTACTTGGGAGGCTGAGGTGG', 'CCACTTGAGTTGAGG', 'CTACTTGGGAAGCTAGAGGTGG']
+    # test_sequence = "CTACTTGGGAGGCTGAGGTGG"
+
+    sequences = ["TAGTGAAAGAGGAAAAGAA"]
+    test_sequence = "GCCCAGAAATTCCAGACCAGC"
 
     graph = generate_poa_graph(sequences)
 
@@ -181,6 +224,8 @@ def test_order_of_alignment_minimal():
     graph.incorporateSeqAlignment(alignment, test_sequence, "test")
 
     alignments = graph.generateAlignmentStrings()
+
+    test_alignment = get_alignment_by_label(alignments, "test")
 
     print("Unaligned sequences:")
     for sequence in sequences:
@@ -196,13 +241,13 @@ def test_order_of_alignment_minimal():
     print("\nTest before alignment")
     print("test\t", test_sequence)
     print("Test after alignment")
-    print(alignments[-2][0], '\t', alignments[-2][1].replace("-",""))
+    print(test_alignment[0], '\t', test_alignment[1].replace("-",""))
 
     with open("test_poapy.html", 'w') as file:
         graph.htmlOutput(file)
 
 
 if __name__ == "__main__":
-    test_identical_sequences()
+    # test_identical_sequences()
     # test_order_of_alignment()
-    # test_order_of_alignment_minimal()
+    test_order_of_alignment_minimal()

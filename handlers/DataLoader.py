@@ -53,9 +53,6 @@ class DataLoader:
         x = numpy.load(next_path)['a']
         y = numpy.load(next_path)['b']
 
-        print(x.shape)
-        print(y.shape)
-
         # add 3rd dimension
         x = numpy.expand_dims(x, axis=0)
         y = numpy.expand_dims(y, axis=0)
@@ -99,8 +96,6 @@ class DataLoader:
         x_batch = numpy.concatenate(x_cache, axis=0)
         y_batch = numpy.concatenate(y_cache, axis=0)
 
-        print(x_batch.shape, y_batch.shape)
-
         assert x_batch.shape[0] == self.batch_size
         assert y_batch.shape[0] == self.batch_size
 
@@ -116,7 +111,7 @@ class DataLoader:
 
 
 if __name__ == "__main__":
-    directory = "output/run_2018-8-21-17-8-37-1-233"
+    directory = "output/run_2018-8-22-15-10-37-2-234"
     file_paths = get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz")
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=1, parse_batches=False)
