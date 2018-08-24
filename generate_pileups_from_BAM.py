@@ -15,7 +15,13 @@ import math
 import os.path
 
 
-sequence_to_float = {"-":0,
+sequence_to_float = {"-":0.01,
+                     "A":1.0,
+                     "G":2.0,
+                     "T":3.0,
+                     "C":4.0}
+
+sequence_to_index = {"-":0,
                      "A":1,
                      "G":2,
                      "T":3,
@@ -95,7 +101,7 @@ def convert_aligned_reference_to_one_hot(reference_alignment):
     matrix = numpy.zeros([5,length])
 
     for c,character in enumerate(alignment_string):
-        index = sequence_to_float[character]
+        index = sequence_to_index[character]
 
         matrix[index,c] = 1
 
@@ -625,7 +631,7 @@ def generate_collapsed_data(bam_file_path, reference_file_path, vcf_path, bed_pa
                 exit()
 
 
-def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_graph_html=False):
+def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, save_graph_html=False, print_results=False):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -654,17 +660,17 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window, out
     pileup_matrix = convert_alignments_to_matrix(alignments)
     reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
 
-    # PRINT RESULTS
-    # print_segments(ref_sequence, sequences)
-    #
-    # for label, alignstring in alignments:
-    #     print("{0:15s} {1:s}".format(label, alignstring))
-    #
-    # for label, alignstring in ref_alignment:
-    #     print("{0:15s} {1:s}".format(label, alignstring))
-    #
-    # visualize_matrix(pileup_matrix)
-    # visualize_matrix(reference_matrix)
+    if print_results:
+        print_segments(ref_sequence, sequences)
+
+        for label, alignstring in alignments:
+            print("{0:15s} {1:s}".format(label, alignstring))
+
+        for label, alignstring in ref_alignment:
+            print("{0:15s} {1:s}".format(label, alignstring))
+
+        visualize_matrix(pileup_matrix)
+        visualize_matrix(reference_matrix)
 
     if ref_alignment[0][1].replace("-",'') != ref_sequence:
         print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
@@ -673,7 +679,7 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window, out
         # visualize_matrix(pileup_matrix)
         # print(ref_sequence)
         # print(sequences)
-    else:
+    elif save_data:
         save_training_data(output_dir=output_dir,
                            pileup_matrix=pileup_matrix,
                            reference_matrix=reference_matrix,
@@ -699,7 +705,7 @@ def test_region(bam_file_path, reference_file_path, chromosome_name, region, win
 
 def main():
     output_root_dir = "output/"
-    instance_dir = "run_" + get_current_timestamp()
+    instance_dir = "pileup_generation_" + get_current_timestamp()
     output_dir = os.path.join(output_root_dir, instance_dir)
 
     # ---- Illumina (laptop) --------------------------------------------------
@@ -726,25 +732,27 @@ def main():
 
     # ---- TEST window --------------------------------------------------------
 
-    # window = [715118, 715138]       # illumina laptop test region
-    # # window = [246567, 246587]     # previously failing test case for collapsed reads
-    #
-    # test_window(bam_file_path=bam_file_path,
-    #             reference_file_path=reference_file_path,
-    #             chromosome_name=chromosome_name,
-    #             window=window,
-    #             output_dir=output_dir)
+    window = [762580, 762600]       # nanopore broken alignment region...
+    # window = [246567, 246587]     # previously failing test case for collapsed reads
+
+    test_window(bam_file_path=bam_file_path,
+                reference_file_path=reference_file_path,
+                chromosome_name=chromosome_name,
+                window=window,
+                output_dir=output_dir,
+                print_results=True,
+                save_data=False)
 
     # ---- TEST region --------------------------------------------------------
 
-    region = [715118, 716138]  # illumina laptop test region
-
-    test_region(bam_file_path=bam_file_path,
-                reference_file_path=reference_file_path,
-                chromosome_name=chromosome_name,
-                region=region,
-                window_size=20,
-                output_dir=output_dir)
+    # region = [715000, 785000]  # illumina laptop test region
+    #
+    # test_region(bam_file_path=bam_file_path,
+    #             reference_file_path=reference_file_path,
+    #             chromosome_name=chromosome_name,
+    #             region=region,
+    #             window_size=20,
+    #             output_dir=output_dir)
 
     # ---- genomic run --------------------------------------------------------
 

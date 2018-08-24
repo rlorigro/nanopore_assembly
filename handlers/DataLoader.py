@@ -43,7 +43,7 @@ class DataLoader:
         self.batch_size = batch_size
         self.parse_batches = parse_batches
 
-    def load_next_file(self, x_cache, y_cache):
+    def load_next_file(self, path_cache, x_cache, y_cache):
         """
         Assuming there is another file in the list of paths, load it and concatenate with the leftover entries from last
         :return:
@@ -59,27 +59,29 @@ class DataLoader:
 
         x_cache.append(x)
         y_cache.append(y)
+        path_cache.append(next_path)
 
         self.files_loaded += 1
 
-        return x_cache, y_cache
+        return path_cache, x_cache, y_cache
 
     def load_batch(self):
+        path_cache = list()
         x_cache = list()
         y_cache = list()
 
         while len(x_cache) < self.batch_size:
             if self.files_loaded < self.n_files:
-                x_cache, y_cache = self.load_next_file(x_cache, y_cache)
+                next_path, x_cache, y_cache = self.load_next_file(path_cache, x_cache, y_cache)
             else:
                 raise StopIteration
 
-        return x_cache, y_cache
+        return path_cache, x_cache, y_cache
 
     def parse_batch(self, x_batch, y_batch):
         x_dtype = torch.FloatTensor
-        y_dtype = torch.FloatTensor  # for MSE Loss or BCE loss
-        # y_dtype = torch.LongTensor      # for CE Loss
+        # y_dtype = torch.FloatTensor  # for MSE Loss or BCE loss
+        y_dtype = torch.LongTensor      # for CE Loss
 
         x = torch.from_numpy(x_batch).type(x_dtype)
         y = torch.from_numpy(y_batch).type(y_dtype)
@@ -91,7 +93,7 @@ class DataLoader:
         Get the next batch data. DOES NOT RETURN FINAL BATCH IF != BATCH SIZE
         :return:
         """
-        x_cache, y_cache = self.load_batch()
+        path_cache, x_cache, y_cache = self.load_batch()
 
         x_batch = numpy.concatenate(x_cache, axis=0)
         y_batch = numpy.concatenate(y_cache, axis=0)
@@ -102,7 +104,7 @@ class DataLoader:
         if self.parse_batches:
             x_batch, y_batch = self.parse_batch(x_batch, y_batch)
 
-        return x_batch, y_batch
+        return path_cache, x_batch, y_batch
 
     def __iter__(self):
         self.load_batch()

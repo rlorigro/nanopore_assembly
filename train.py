@@ -1,21 +1,23 @@
 from handlers.FileManager import FileManager
 from handlers.DataLoader import DataLoader
-from models.CnnRnn import EncoderDecoder
+from models.Cnn import EncoderDecoder
 from matplotlib import pyplot
 from torch import nn
 from torch import optim
 from os import path
 import torch
 import datetime
+import numpy
 import csv
 
 
 class ResultsHandler:
     def __init__(self):
         self.datetime_string = '-'.join(list(map(str, datetime.datetime.now().timetuple()))[:-1])
+        self.subdirectory_name = "training_" + self.datetime_string
 
         self.output_directory_name = "output/"
-        self.directory = path.join(self.output_directory_name, self.datetime_string)
+        self.directory = path.join(self.output_directory_name, self.subdirectory_name)
 
         self.n_checkpoints = 0
 
@@ -39,12 +41,55 @@ class ResultsHandler:
         pass
 
 
+def sequential_loss_CE(y_predict, y, loss_fn):
+    # x shape = (n, 5, length)
+    # y shape = (n, 5, length)
+
+    n, c, l = y_predict.shape
+
+    y_target = torch.argmax(y, dim=1)
+
+    loss = None
+
+    for i in range(l):
+        if i == 0:
+            print(y[:,:,i])
+            print(torch.nn.functional.softmax(y_predict[:,:,i]))
+
+            loss = loss_fn(y_predict[:,:,i], y_target[:,i])
+        else:
+            loss += loss_fn(y_predict[:,:,i], y_target[:,i])
+
+    return loss
+
+
+def sequential_loss_MSE(y_predict, y_target, loss_fn):
+    # x shape = (n, 5, length)
+    # y shape = (n, 5, length)
+
+    n, c, l = y_predict.shape
+
+    loss = None
+
+    for i in range(l):
+        if i == 0:
+            print(y_predict[:,:,i])
+            print(y_target[:,:,i])
+
+            loss = loss_fn(y_predict[:,:,i], y_target[:,:,i])
+        else:
+            loss += loss_fn(y_predict[:,:,i], y_target[:,:,i])
+
+    return loss
+
+
 def train_batch(model, x, y, optimizer, loss_fn):
     # Run forward calculation
     y_predict = model.forward(x)
 
     # Compute loss.
-    loss = loss_fn(y_predict, y)
+    # loss = loss_fn(y_predict, y)
+    loss = sequential_loss_CE(y_predict, y, loss_fn)
 
     # Before the backward pass, use the optimizer object to zero all of the
     # gradients for the variables it will update (which are the learnable weights
@@ -68,23 +113,23 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
     losses = list()
 
     for b, batch in enumerate(data_loader):
-        x, y = batch
+        paths, x, y = batch
 
-        print("x1", x.shape)
-        print("y1", y.shape)
+        # print("x1", x.shape)
+        # print("y1", y.shape)
 
         n, h, w = x.shape
         x = x.view([n,1,h,w])
 
-        n, h, w = y.shape
-        y = y.view([n,1,h,w])
+        # n, h, w = y.shape
+        # y = y.view([n,1,h,w])
 
-        print("x2", x.shape)
-        print("y2", y.shape)
+        # print("x2", x.shape)
+        # print("y2", y.shape)
 
         # expected convolution input = (batch, channel, H, W)
         # y_predict shape = (batch_size, seq_len, hidden_size*num_directions)
-        loss, y_predict = train_batch(model=model, x=x, y=x, optimizer=optimizer, loss_fn=loss_fn)
+        loss, y_predict = train_batch(model=model, x=x, y=y, optimizer=optimizer, loss_fn=loss_fn)
         losses.append(loss)
 
         print(b, loss)
@@ -92,8 +137,30 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
         if b % checkpoint_interval == 0:
             results_handler.save_model(model)
 
+            print(paths[0])
+
+            fig, axes = pyplot.subplots(nrows=3, gridspec_kw = {'height_ratios':[1, 1, 10]})
+
+            x_data = x.data.numpy()[0,:,:,:].squeeze()
+            y_target_data = y.data.numpy()[0,:,:].squeeze()
+            y_predict_data = y_predict.data.numpy()[0,:,:].squeeze()
+
+            print(x_data.shape)
+
+            axes[2].imshow(x_data)
+            axes[1].imshow(y_target_data)
+            axes[0].imshow(y_predict_data)
+
+            axes[2].set_ylabel("x")
+            axes[1].set_ylabel("y")
+            axes[0].set_ylabel("y*")
+
+            pyplot.show()
+            pyplot.close()
+
             pyplot.plot(losses)
             pyplot.show()
+            pyplot.close()
 
     return losses
 
@@ -121,23 +188,20 @@ def predict_encoding(model, data_loader, n_batches):
 
 
 def run(load_model=False, model_state_path=None):
-    directory = "output/run_2018-8-22-15-10-37-2-234"
-    file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz")
+    directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-23-16-0-24-3-235"
+    file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     results_handler = ResultsHandler()
 
-    # Signal simulator parameters
-    sequence_nucleotide_length = 8
-
     # Architecture parameters
-    hidden_size = 2*sequence_nucleotide_length
+    hidden_size = 16
     input_channels = 1      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
     n_layers = 3
 
     # Hyperparameters
-    learning_rate = 1e-5
-    weight_decay = 1e-6
+    learning_rate = 1e-3
+    weight_decay = 0
     dropout_rate = 0
 
     # Training parameters
@@ -151,7 +215,8 @@ def run(load_model=False, model_state_path=None):
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # Define the loss function
-    loss_fn = nn.MSELoss()  # mean squared error
+    # loss_fn = nn.MSELoss()
+    loss_fn = nn.CrossEntropyLoss()
 
     if load_model:
         # get weight parameters from saved model state
