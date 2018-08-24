@@ -2,6 +2,7 @@ from modules.PileupGenerator import PileupGenerator
 from modules.IntervalTree import IntervalTree
 from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
+from handlers.FastaWriter import FastaWriter
 from handlers.BamHandler import BamHandler
 from handlers.TsvHandler import TsvHandler
 from handlers.FileManager import FileManager
@@ -14,28 +15,6 @@ import numpy
 import math
 import os.path
 
-
-sequence_to_float = {"-":0.01,
-                     "A":1.0,
-                     "G":2.0,
-                     "T":3.0,
-                     "C":4.0}
-
-sequence_to_index = {"-":0,
-                     "A":1,
-                     "G":2,
-                     "T":3,
-                     "C":4}
-
-# How to encode bases in a single 0-1 channel
-SCALE_FACTOR = 0.2
-
-# POA alignment parameters
-FAST = True
-GLOBAL_ALIGN = True
-MATCH_SCORE = 1
-MISMATCH_SCORE = -1
-GAP_SCORE = -2
 
 MAX_COVERAGE = 50
 
@@ -58,122 +37,10 @@ def print_segments(ref_sequence, sequences):
     print()
 
 
-def visualize_matrix(matrix):
-    pyplot.imshow(matrix, cmap="viridis")
-    pyplot.show()
-
-
 def get_current_timestamp():
     datetime_string = '-'.join(list(map(str, datetime.now().timetuple()))[:-1])
 
     return datetime_string
-
-
-def save_training_data(output_dir, pileup_matrix, reference_matrix, chromosome_name, start):
-    array_file_extension = ".npz"
-
-    # ensure chromosomal directory exists
-    chromosomal_output_dir = os.path.join(output_dir, chromosome_name)
-    if not os.path.exists(chromosomal_output_dir):
-        FileManager.ensure_directory_exists(chromosomal_output_dir)
-
-    # generate unique filename and path
-    filename = chromosome_name + "_" + str(start)
-
-    output_path_prefix = os.path.join(chromosomal_output_dir, filename)
-
-    data_path = output_path_prefix + "_matrix" + array_file_extension
-
-    # write numpy arrays
-    numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix)
-
-
-def convert_aligned_reference_to_one_hot(reference_alignment):
-    """
-    given a reference sequence, generate an lx5 matrix of one-hot encodings where l=sequence length and 5 is the # of
-    nucleotides, plus a null character
-    :param reference_sequence:
-    :return:
-    """
-    alignment_string = reference_alignment[0][1]
-
-    length = len(alignment_string)
-    matrix = numpy.zeros([5,length])
-
-    for c,character in enumerate(alignment_string):
-        index = sequence_to_index[character]
-
-        matrix[index,c] = 1
-
-    return matrix
-
-
-def convert_reference_to_one_hot(reference_sequence):
-    """
-    given a reference sequence, generate an lx4 matrix of one-hot encodings where l=sequence length and 4 is the # of nt
-    :param reference_sequence:
-    :return:
-    """
-    length = len(reference_sequence)
-    matrix = numpy.zeros([4,length])
-
-    for c,character in enumerate(reference_sequence):
-        index = sequence_to_float[character] - 1
-
-        matrix[index,c] = 1
-
-    return matrix
-
-
-def convert_collapsed_alignments_to_matrix(alignments, character_counts):
-    """
-    For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1
-    :param alignments:
-    :return:
-    """
-    n = MAX_COVERAGE
-    m = len(alignments[0][1])
-
-    base_matrix = numpy.zeros([n, m])
-    repeat_matrix = numpy.zeros([n,m])
-
-    for a,alignment in enumerate(alignments):
-        c = 0
-        read_id, alignment_string = alignment
-
-        for b,character in enumerate(alignment_string):
-            base_matrix[a,b] = sequence_to_float[character]*SCALE_FACTOR
-
-            if character != "-":
-                # print("a", a, "c", c, "len c", len(character_counts[a]), alignment[1], character_counts[a][c], character_counts[a])
-
-                # print(a, c)
-                # print(alignment_string.replace("-",''))
-                # print(''.join(map(str,character_counts[a])))
-
-                repeat_matrix[a,b] = character_counts[a][c]
-                c += 1
-
-    return base_matrix, repeat_matrix
-
-
-def convert_alignments_to_matrix(alignments):
-    """
-    For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1
-    :param alignments:
-    :return:
-    """
-    n = MAX_COVERAGE
-    m = len(alignments[0][1])
-
-    matrix = numpy.zeros([n, m])
-    for a,alignment in enumerate(alignments):
-        read_id, alignment_string = alignment
-
-        for b,character in enumerate(alignment_string):
-            matrix[a,b] = sequence_to_float[character]*SCALE_FACTOR
-
-    return matrix
 
 
 def collapse_repeats(sequences):
@@ -206,47 +73,6 @@ def collapse_repeats(sequences):
         character_counts.append(character_count)
 
     return character_sequences, character_counts
-
-
-def partial_order_alignment(ref_sequence, sequences, graph=None, include_reference=False):
-    """
-    Generate partial order alignment graph and find fixed global read alignment string for each read
-    :param ref_sequence:
-    :param sequences:
-    :return:
-    """
-
-    if graph is None:
-        init_sequence = sequences[0]
-        init_label = "0"
-
-        graph = poagraph.POAGraph(init_sequence, init_label)
-
-    for i in range(1, len(sequences)):
-        sequence = sequences[i]
-
-        alignment = seqgraphalignment.SeqGraphAlignment(sequence, graph,
-                                                        fastMethod=FAST,
-                                                        globalAlign=GLOBAL_ALIGN,
-                                                        matchscore=MATCH_SCORE,
-                                                        mismatchscore=MISMATCH_SCORE,
-                                                        gapscore=GAP_SCORE)
-
-        graph.incorporateSeqAlignment(alignment, sequence, str(i))
-
-    if include_reference:
-        alignment = seqgraphalignment.SeqGraphAlignment(ref_sequence, graph,
-                                                        fastMethod=FAST,
-                                                        globalAlign=GLOBAL_ALIGN,
-                                                        matchscore=MATCH_SCORE,
-                                                        mismatchscore=MISMATCH_SCORE,
-                                                        gapscore=GAP_SCORE)
-
-        graph.incorporateSeqAlignment(alignment, ref_sequence, "ref")
-
-    alignments = graph.generateAlignmentStrings(generate_consensus=False)
-
-    return alignments, graph
 
 
 def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_start, pileup_end):
@@ -543,24 +369,6 @@ def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromo
                                                                      pileup_start=pileup_start,
                                                                      pileup_end=pileup_end)
 
-            alignments, graph = partial_order_alignment(ref_sequence, sequences, include_reference=True)
-
-            ref_alignment = alignments[-1:]
-            alignments = alignments[:-1]
-
-            for label, alignstring in alignments:
-                print("{0:15s} {1:s}".format(label, alignstring))
-
-            convert_alignments_to_matrix(alignments)
-            # convert_alignments_to_matrix(ref_alignment)
-            # convert_reference_to_one_hot(ref_sequence)
-            convert_aligned_reference_to_one_hot(ref_alignment)
-
-            assert ref_alignment[0][1].replace("-", '') == ref_sequence, "Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end)
-
-            if w == 0:
-                with open("test.html", 'w') as file:
-                    graph.htmlOutput(file)
 
             if w == 10:
                 exit()
@@ -610,28 +418,11 @@ def generate_collapsed_data(bam_file_path, reference_file_path, vcf_path, bed_pa
             character_sequences, character_counts = collapse_repeats(sequences)
             print_collapsed_segments(character_sequences, character_counts)
 
-            alignments, graph = partial_order_alignment(ref_sequence, character_sequences, include_reference=True)
-
-            ref_alignment = alignments[-1:]
-            alignments = alignments[:-1]
-
-            for label, alignstring in alignments:
-                print("{0:15s} {1:s}".format(label, alignstring))
-
-            convert_collapsed_alignments_to_matrix(alignments, character_counts)
-            # convert_collapsed_alignments_to_matrix(alignments, character_counts)
-            # convert_reference_to_one_hot(ref_sequence)
-            convert_aligned_reference_to_one_hot(ref_alignment)
-
-            if w == 0:
-                with open("test.html", 'w') as file:
-                    graph.htmlOutput(file)
-
             if w == 0:
                 exit()
 
 
-def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, save_graph_html=False, print_results=False):
+def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -652,43 +443,18 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window, out
                                                              pileup_start=pileup_start,
                                                              pileup_end=pileup_end)
 
-    alignments, graph = partial_order_alignment(ref_sequence, sequences, include_reference=True)
-
-    ref_alignment = alignments[-1:]
-    alignments = alignments[:-1]
-
-    pileup_matrix = convert_alignments_to_matrix(alignments)
-    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
-
     if print_results:
         print_segments(ref_sequence, sequences)
 
-        for label, alignstring in alignments:
-            print("{0:15s} {1:s}".format(label, alignstring))
+    if save_data:
+        filename = "test_" + str(pileup_start)
+        output_path = os.path.join(output_dir, filename)
 
-        for label, alignstring in ref_alignment:
-            print("{0:15s} {1:s}".format(label, alignstring))
+        if not os.path.exists(output_dir):
+            FileManager.ensure_directory_exists(output_dir)
 
-        visualize_matrix(pileup_matrix)
-        visualize_matrix(reference_matrix)
-
-    if ref_alignment[0][1].replace("-",'') != ref_sequence:
-        print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
-        print("unaligned:\t",ref_sequence)
-        print("aligned:\t",ref_alignment[0][1].replace("-",''))
-        # visualize_matrix(pileup_matrix)
-        # print(ref_sequence)
-        # print(sequences)
-    elif save_data:
-        save_training_data(output_dir=output_dir,
-                           pileup_matrix=pileup_matrix,
-                           reference_matrix=reference_matrix,
-                           chromosome_name=chromosome_name,
-                           start=pileup_start)
-
-    if save_graph_html:
-        with open("test.html", 'w') as file:
-            graph.htmlOutput(file)
+        fasta_writer = FastaWriter(output_path)
+        fasta_writer.write_sequences(sequences)
 
 
 def test_region(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir):
@@ -742,7 +508,7 @@ def main():
                 window=window,
                 output_dir=output_dir,
                 print_results=True,
-                save_data=False)
+                save_data=True)
 
     # ---- TEST region --------------------------------------------------------
 

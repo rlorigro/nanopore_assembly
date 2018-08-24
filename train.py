@@ -188,7 +188,7 @@ def predict_encoding(model, data_loader, n_batches):
 
 
 def run(load_model=False, model_state_path=None):
-    directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-23-16-0-24-3-235"
+    directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-24-12-54-20-4-236"
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     results_handler = ResultsHandler()
@@ -207,6 +207,8 @@ def run(load_model=False, model_state_path=None):
     # Training parameters
     batch_size_train = 1
     n_batches = 8000
+
+    checkpoint_interval = 300
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train)
     model = EncoderDecoder(hidden_size=hidden_size, input_size=input_channels, output_size=output_size, n_layers=n_layers, dropout_rate=dropout_rate)
@@ -229,7 +231,7 @@ def run(load_model=False, model_state_path=None):
                    loss_fn=loss_fn,
                    n_batches=n_batches,
                    results_handler=results_handler,
-                   checkpoint_interval=200)
+                   checkpoint_interval=checkpoint_interval)
 
     test(model=model,
          data_loader=data_loader,
@@ -267,7 +269,6 @@ def run(load_model=False, model_state_path=None):
 
 
 if __name__ == "__main__":
-
     run()
 
     model_path = "/home/ryan/code/nanopore_signal_simulation/output/2018-7-25-12-7-43-2-206/model_checkpoint_41"

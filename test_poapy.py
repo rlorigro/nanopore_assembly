@@ -57,7 +57,7 @@ def test_identical_sequences():
 
     for i in range(1, len(sequences)):
         sequence = sequences[i]
-        read_id = str(i)
+        label = str(i)
 
         alignment = seqgraphalignment.SeqGraphAlignment(sequence, graph,
                                                         fastMethod=False,
@@ -66,7 +66,7 @@ def test_identical_sequences():
                                                         mismatchscore=-1,
                                                         gapscore=-2)
 
-        graph.incorporateSeqAlignment(alignment, sequence, str(i))
+        graph.incorporateSeqAlignment(alignment, sequence, label)
 
     alignments = graph.generateAlignmentStrings()
 
@@ -199,7 +199,7 @@ def test_order_of_alignment():
     #     print("{0:15s} {1:s}".format(read_id, alignstring))
 
 
-def test_order_of_alignment_minimal():
+def test_order_of_alignment_minimal(sequences, test_sequence):
     # sequences = ['ATATTGTGTAAGGCACAATTAACA',
     #              'ATATTGCAAGGCACAATTCAACA',
     #              'ATATTGCAAGGCACACAACA',
@@ -248,6 +248,39 @@ def test_order_of_alignment_minimal():
 
 
 if __name__ == "__main__":
-    # test_identical_sequences()
+    sequences = ['CTACTTGGGAGGCTGGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGGGGTGG',
+                 'CTACTTGGGAGGCTGGGGTGG',
+                 'CTACTTGGGAGGCTGGGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTGGGAGGCTGAGGTGG',
+                 'CTACTTTGGGAGGCTGAGGTGG',
+                 'CCACTTGAGTTGAGG',
+                 'CTACTTGGGAAGCTAGAGGTGG',
+                 'ATACTTAGGAGGCTGAGGTGG',
+                 'CCACTTTGGGAGGCTGAGGG']
+
+    test_sequence = "CTACTTGGGAGGCTGAGGTGG"
+
+    test_order_of_alignment_minimal(sequences=sequences, test_sequence=test_sequence)
+
+    sequences = ['CTACTTGGGAGGCTGAGGTGG', 'CCACTTGAGTTGAGG', 'CTACTTGGGAAGCTAGAGGTGG']
+    test_sequence = "CTACTTGGGAGGCTGAGGTGG"
+
+    test_order_of_alignment_minimal(sequences=sequences, test_sequence=test_sequence)
+
+    sequences = ["TAGTGAAAGAGGAAAAGAA"]
+    test_sequence = "GCCCAGAAATTCCAGACCAGC"
+
+    test_order_of_alignment_minimal(sequences=sequences, test_sequence=test_sequence)
+
+    sequences = ["TTA", "TGC"]
+    test_sequence = "TTGC"
+
+    test_order_of_alignment_minimal(sequences=sequences, test_sequence=test_sequence)
+
+    test_identical_sequences()
+
+
     # test_order_of_alignment()
-    test_order_of_alignment_minimal()
