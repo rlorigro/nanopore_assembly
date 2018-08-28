@@ -6,18 +6,62 @@ from handlers.FastaWriter import FastaWriter
 from handlers.BamHandler import BamHandler
 from handlers.TsvHandler import TsvHandler
 from handlers.FileManager import FileManager
+from subprocess import Popen, PIPE
 from poapy import seqgraphalignment
 from poapy import poagraph
 from matplotlib import pyplot
 from datetime import datetime
 from tqdm import tqdm
-import subprocess
 import numpy
 import math
 import os.path
 
 
+sequence_to_float = {"-":0.01,
+                     "A":1.0,
+                     "G":2.0,
+                     "T":3.0,
+                     "C":4.0}
+
+sequence_to_index = {"-":0,
+                     "A":1,
+                     "G":2,
+                     "T":3,
+                     "C":4}
+
+# How to encode bases in a single 0-1 channel
+SCALE_FACTOR = 0.2
+
 MAX_COVERAGE = 50
+
+GLOBAL_ALIGN = True
+MATCH_SCORE = 1
+MISMATCH_SCORE = -2
+GAP_SCORE = -1
+
+
+def save_training_data(output_dir, pileup_matrix, reference_matrix, chromosome_name, start):
+    array_file_extension = ".npz"
+
+    # ensure chromosomal directory exists
+    chromosomal_output_dir = os.path.join(output_dir, chromosome_name)
+    if not os.path.exists(chromosomal_output_dir):
+        FileManager.ensure_directory_exists(chromosomal_output_dir)
+
+    # generate unique filename and path
+    filename = chromosome_name + "_" + str(start)
+
+    output_path_prefix = os.path.join(chromosomal_output_dir, filename)
+
+    data_path = output_path_prefix + "_matrix" + array_file_extension
+
+    # write numpy arrays
+    numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix)
+
+
+def visualize_matrix(matrix):
+    pyplot.imshow(matrix, cmap="viridis")
+    pyplot.show()
 
 
 def print_collapsed_segments(sequences, character_counts):
@@ -42,6 +86,66 @@ def get_current_timestamp():
     datetime_string = '-'.join(list(map(str, datetime.now().timetuple()))[:-1])
 
     return datetime_string
+
+
+def convert_aligned_reference_to_one_hot(reference_alignment):
+    """
+    given a reference sequence, generate an lx5 matrix of one-hot encodings where l=sequence length and 5 is the # of
+    nucleotides, plus a null character
+    :param reference_sequence:
+    :return:
+    """
+    alignment_string = reference_alignment[0][1]
+
+    length = len(alignment_string)
+    matrix = numpy.zeros([5,length])
+
+    for c,character in enumerate(alignment_string):
+        index = sequence_to_index[character]
+
+        matrix[index,c] = 1
+
+    return matrix
+
+
+def convert_alignments_to_matrix(alignments):
+    """
+    For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1
+    :param alignments:
+    :return:
+    """
+    n = MAX_COVERAGE
+    m = len(alignments[0][1])
+
+    matrix = numpy.zeros([n, m])
+    for a,alignment in enumerate(alignments):
+        read_id, alignment_string = alignment
+
+        for b,character in enumerate(alignment_string):
+            matrix[a,b] = sequence_to_float[character]*SCALE_FACTOR
+
+    return matrix
+
+
+def get_alignments_by_sequence(alignments, sequence):
+    """
+    iterate through poapy alignment tuples to find all alignments with the specified sequence
+    :param alignments:
+    :param sequence:
+    :return:
+    """
+    query_alignments = list()
+
+    for a, alignment in enumerate(alignments):
+        current_sequence = alignment[1].replace("-",'')
+
+        if current_sequence == sequence:
+            query_alignments.append(alignment)
+
+    if len(query_alignments) == 0:
+        raise KeyError("ERROR: query sequence not found in alignments")
+
+    return query_alignments
 
 
 def collapse_repeats(sequences):
@@ -330,7 +434,7 @@ def get_non_variant_windows(vcf_path, bed_path, chromosome_name, start_position,
     return filtered_windows
 
 
-def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, generate_from_vcf=False):
+def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, output_dir, chromosome_name, start_position, end_position, generate_from_vcf=False):
     """
     Generate pileup for read segments aligned between two genomic coordinates
     :param bam_file_path:
@@ -362,7 +466,7 @@ def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromo
             pileup_start = window[0]
             pileup_end = window[1]      # add random variation here
 
-            print(pileup_start, pileup_end)
+            # print(pileup_start, pileup_end)
 
             ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
                                                                      bam_handler=bam_handler,
@@ -370,8 +474,28 @@ def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromo
                                                                      pileup_start=pileup_start,
                                                                      pileup_end=pileup_end)
 
-            if w == 10:
-                exit()
+            alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
+            ref_alignment = [ref_alignment]
+
+            pileup_matrix = convert_alignments_to_matrix(alignments)
+            reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
+
+            if ref_alignment[0][1].replace("-", '') != ref_sequence:
+                print("Aligned reference does not match true reference at [%d,%d]" % (pileup_start, pileup_end))
+                print("unaligned:\t", ref_sequence)
+                print("aligned:\t", ref_alignment[0][1].replace("-", ''))
+                # visualize_matrix(pileup_matrix)
+                # print(ref_sequence)
+                # print(sequences)
+
+            save_training_data(output_dir=output_dir,
+                               pileup_matrix=pileup_matrix,
+                               reference_matrix=reference_matrix,
+                               chromosome_name=chromosome_name,
+                               start=pileup_start)
+
+            # if w == 10:
+            #     exit()
 
 
 def generate_collapsed_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, generate_from_vcf=False):
@@ -422,6 +546,59 @@ def generate_collapsed_data(bam_file_path, reference_file_path, vcf_path, bed_pa
                 exit()
 
 
+def call_commandline_spoa(space_separated_sequences, ref_sequence):
+    match_arg = str(MATCH_SCORE)
+    mismatch_arg = str(MISMATCH_SCORE)
+    gap_arg = str(GAP_SCORE)
+    alignment_arg = str(1) if GLOBAL_ALIGN else str(0)
+
+    args = ["/home/ryan/software/spoa/align_sequences_and_reference_two_pass",
+            alignment_arg,
+            match_arg,
+            mismatch_arg,
+            gap_arg,
+            space_separated_sequences,
+            ref_sequence]
+
+    # print(args)
+
+    process = Popen(args,
+                    stdout=PIPE,
+                    stderr=PIPE)
+
+    stdout, stderr = process.communicate()
+
+    stdout = stdout.decode("UTF-8").strip()
+    stderr = stderr.decode('UTF-8').strip()
+
+    alignment_strings = stdout.split('\n')
+    read_alignment_strings = alignment_strings[:-1]
+    ref_alignment_string = alignment_strings[-1]
+
+    if stderr != "":
+        exit(stderr)
+
+    return read_alignment_strings, ref_alignment_string
+
+
+def get_spoa_alignment(sequences, ref_sequence):
+    space_separated_sequences = ' '.join(sequences)
+
+    read_alignment_strings, ref_alignment_string = call_commandline_spoa(space_separated_sequences, ref_sequence)
+
+    alignments = list()
+    for a, alignment_string in enumerate(read_alignment_strings):
+        label = str(a)
+        alignment = [label, alignment_string]
+
+        alignments.append(alignment)
+
+    ref_label = "ref"
+    ref_alignment = [ref_label, ref_alignment_string]
+
+    return alignments, ref_alignment
+
+
 def test_window(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False):
     """
     Run the pileup generator for a single specified window
@@ -443,18 +620,38 @@ def test_window(bam_file_path, reference_file_path, chromosome_name, window, out
                                                              pileup_start=pileup_start,
                                                              pileup_end=pileup_end)
 
+    alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
+    ref_alignment = [ref_alignment]
+
+    pileup_matrix = convert_alignments_to_matrix(alignments)
+    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
+
     if print_results:
         print_segments(ref_sequence, sequences)
 
-    if save_data:
-        filename = "test_" + str(pileup_start) + ".fasta"
-        output_path = os.path.join(output_dir, filename)
+        for label, alignstring in alignments:
+            print("{0:15s} {1:s}".format(label, alignstring))
 
-        if not os.path.exists(output_dir):
-            FileManager.ensure_directory_exists(output_dir)
+        for label, alignstring in ref_alignment:
+            print("{0:15s} {1:s}".format(label, alignstring))
 
-        fasta_writer = FastaWriter(output_path)
-        fasta_writer.write_sequences(sequences)
+        visualize_matrix(pileup_matrix)
+        visualize_matrix(reference_matrix)
+
+    if ref_alignment[0][1].replace("-",'') != ref_sequence:
+        print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
+        print("unaligned:\t",ref_sequence)
+        print("aligned:\t",ref_alignment[0][1].replace("-",''))
+        # visualize_matrix(pileup_matrix)
+        # print(ref_sequence)
+        # print(sequences)
+
+    elif save_data:
+        save_training_data(output_dir=output_dir,
+                           pileup_matrix=pileup_matrix,
+                           reference_matrix=reference_matrix,
+                           chromosome_name=chromosome_name,
+                           start=pileup_start)
 
 
 def test_region(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir):
@@ -471,7 +668,7 @@ def test_region(bam_file_path, reference_file_path, chromosome_name, region, win
 
 def main():
     output_root_dir = "output/"
-    instance_dir = "fasta_generation_" + get_current_timestamp()
+    instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
     output_dir = os.path.join(output_root_dir, instance_dir)
 
     # ---- Illumina (laptop) --------------------------------------------------
@@ -498,8 +695,13 @@ def main():
 
     # ---- TEST window --------------------------------------------------------
 
-    # window = [762580, 762600]       # nanopore broken alignment region...
-    window = [748460, 748480]       # nanopore broken alignment region...
+    # window = [762580, 762600]       # nanopore broken alignment region...  POAPY ONLY
+    # window = [748460, 748480]       # nanopore broken alignment region...  POAPY ONLY
+    # window = [767240, 767260]       # nanopore broken alignment region...  SPOA NOOOOooOOoooo
+    # window = [727360, 767280]       # nanopore broken alignment region...  very high loss in CNNRNN
+    # window = [727200, 727220]       # nanopore broken alignment region...  very high loss in CNNRNN
+    # window = [748220, 748240]       # nanopore broken alignment region...  very high loss in CNNRNN
+    window = [1105084, 1105104]   # very messy alignment even with spoa... why?
     # window = [246567, 246587]     # previously failing test case for collapsed reads
 
     test_window(bam_file_path=bam_file_path,
@@ -532,7 +734,8 @@ def main():
     #               bed_path=bed_path,
     #               chromosome_name=chromosome_name,
     #               start_position=start_position,
-    #               end_position=end_position)
+    #               end_position=end_position,
+    #               output_dir=output_dir)
 
     # generate_collapsed_data(bam_file_path=bam_file_path,
     #                         reference_file_path=reference_file_path,

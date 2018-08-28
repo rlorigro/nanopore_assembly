@@ -53,8 +53,8 @@ def sequential_loss_CE(y_predict, y, loss_fn):
 
     for i in range(l):
         if i == 0:
-            print(y[:,:,i])
-            print(torch.nn.functional.softmax(y_predict[:,:,i]))
+            # print(y[:,:,i])
+            # print(torch.nn.functional.softmax(y_predict[:,:,i]))
 
             loss = loss_fn(y_predict[:,:,i], y_target[:,i])
         else:
@@ -73,8 +73,8 @@ def sequential_loss_MSE(y_predict, y_target, loss_fn):
 
     for i in range(l):
         if i == 0:
-            print(y_predict[:,:,i])
-            print(y_target[:,:,i])
+            # print(y_predict[:,:,i])
+            # print(y_target[:,:,i])
 
             loss = loss_fn(y_predict[:,:,i], y_target[:,:,i])
         else:
@@ -134,6 +134,9 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
 
         print(b, loss)
 
+        if loss > 100:
+            print("Warning: extreme loss observed for training example:", paths[0])
+
         if b % checkpoint_interval == 0:
             results_handler.save_model(model)
 
@@ -145,7 +148,7 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
             y_target_data = y.data.numpy()[0,:,:].squeeze()
             y_predict_data = y_predict.data.numpy()[0,:,:].squeeze()
 
-            print(x_data.shape)
+            # print(x_data.shape)
 
             axes[2].imshow(x_data)
             axes[1].imshow(y_target_data)
@@ -188,7 +191,11 @@ def predict_encoding(model, data_loader, n_batches):
 
 
 def run(load_model=False, model_state_path=None):
-    directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-24-12-54-20-4-236"
+    # directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-24-12-54-20-4-236"       # poapy
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-13-51-41-0-239"  # spoa
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-16-13-23-0-239"  # spoa with 2 pass alignment
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-17-5-18-0-239"   # spoa 2 pass variants excluded
+
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     results_handler = ResultsHandler()
@@ -271,8 +278,7 @@ def run(load_model=False, model_state_path=None):
 if __name__ == "__main__":
     run()
 
-    model_path = "/home/ryan/code/nanopore_signal_simulation/output/2018-7-25-12-7-43-2-206/model_checkpoint_41"
-
+    # model_path = "/home/ryan/code/nanopore_signal_simulation/output/2018-7-25-12-7-43-2-206/model_checkpoint_41"
     # test_saved_model(model_path)
 
     # run(load_model=True, model_state_path=model_path)
