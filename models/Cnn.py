@@ -14,6 +14,8 @@ class Encoder(nn.Module):
 
         self.kernel_size = 3
 
+        self.leakyrelu = nn.LeakyReLU()
+
         self.n_channels_0 = input_size
         self.n_channels_1 = 3
         self.n_channels_2 = 6
@@ -26,9 +28,11 @@ class Encoder(nn.Module):
 
         # [1, 1, 50, 30]
         x = self.conv2d_1(x)
+        x = self.leakyrelu(x)
 
         # [1, 3, 50, 30]
         x = self.conv2d_2(x)
+        x = self.leakyrelu(x)
 
         return x
 

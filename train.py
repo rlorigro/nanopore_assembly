@@ -41,6 +41,27 @@ class ResultsHandler:
         pass
 
 
+def plot_prediction(x, y, y_predict):
+    fig, axes = pyplot.subplots(nrows=3, gridspec_kw={'height_ratios': [1, 1, 10]})
+
+    x_data = x.data.numpy()[0, :, :, :].squeeze()
+    y_target_data = y.data.numpy()[0, :, :].squeeze()
+    y_predict_data = y_predict.data.numpy()[0, :, :].squeeze()
+
+    # print(x_data.shape)
+
+    axes[2].imshow(x_data)
+    axes[1].imshow(y_target_data)
+    axes[0].imshow(y_predict_data)
+
+    axes[2].set_ylabel("x")
+    axes[1].set_ylabel("y")
+    axes[0].set_ylabel("y*")
+
+    pyplot.show()
+    pyplot.close()
+
+
 def sequential_loss_CE(y_predict, y, loss_fn):
     # x shape = (n, 5, length)
     # y shape = (n, 5, length)
@@ -141,25 +162,7 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
             results_handler.save_model(model)
 
             print(paths[0])
-
-            fig, axes = pyplot.subplots(nrows=3, gridspec_kw = {'height_ratios':[1, 1, 10]})
-
-            x_data = x.data.numpy()[0,:,:,:].squeeze()
-            y_target_data = y.data.numpy()[0,:,:].squeeze()
-            y_predict_data = y_predict.data.numpy()[0,:,:].squeeze()
-
-            # print(x_data.shape)
-
-            axes[2].imshow(x_data)
-            axes[1].imshow(y_target_data)
-            axes[0].imshow(y_predict_data)
-
-            axes[2].set_ylabel("x")
-            axes[1].set_ylabel("y")
-            axes[0].set_ylabel("y*")
-
-            pyplot.show()
-            pyplot.close()
+            plot_prediction(x=x,y=y,y_predict=y_predict)
 
             pyplot.plot(losses)
             pyplot.show()
@@ -168,33 +171,11 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
     return losses
 
 
-def test(model, data_loader, n_batches):
-    model.eval()
-
-    for b, batch in enumerate(data_loader):
-        x, y = batch
-
-        # y_predict shape = (batch_size, seq_len, hidden_size*num_directions)
-        y_predict = model.forward(x)
-
-
-def predict_encoding(model, data_loader, n_batches):
-    model.eval()
-
-    for b, batch in enumerate(data_loader):
-        x, y = batch
-
-        # y_predict shape = (batch_size, seq_len, hidden_size*num_directions)
-        y_predict = model.encoder.forward(x)
-
-        print(y_predict)
-
-
 def run(load_model=False, model_state_path=None):
     # directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-24-12-54-20-4-236"       # poapy
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-13-51-41-0-239"  # spoa
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-16-13-23-0-239"  # spoa with 2 pass alignment
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-17-5-18-0-239"   # spoa 2 pass variants excluded
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr1_full/train"   # spoa 2 pass variants excluded
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
@@ -240,9 +221,9 @@ def run(load_model=False, model_state_path=None):
                    results_handler=results_handler,
                    checkpoint_interval=checkpoint_interval)
 
-    test(model=model,
-         data_loader=data_loader,
-         n_batches=4)
+    # test(model=model,
+    #      data_loader=data_loader,
+    #      n_batches=4)
 
     results_handler.save_model(model)
     results_handler.save_plot(losses)

@@ -70,11 +70,8 @@ class DataLoader:
         x_cache = list()
         y_cache = list()
 
-        while len(x_cache) < self.batch_size:
-            if self.files_loaded < self.n_files:
-                next_path, x_cache, y_cache = self.load_next_file(path_cache, x_cache, y_cache)
-            else:
-                raise StopIteration
+        while len(x_cache) < self.batch_size and self.files_loaded < self.n_files:
+            path_cache, x_cache, y_cache = self.load_next_file(path_cache, x_cache, y_cache)
 
         return path_cache, x_cache, y_cache
 
@@ -95,14 +92,22 @@ class DataLoader:
         """
         path_cache, x_cache, y_cache = self.load_batch()
 
-        x_batch = numpy.concatenate(x_cache, axis=0)
-        y_batch = numpy.concatenate(y_cache, axis=0)
+        if len(path_cache) > 0:
+            x_batch = numpy.concatenate(x_cache, axis=0)
+            y_batch = numpy.concatenate(y_cache, axis=0)
 
-        assert x_batch.shape[0] == self.batch_size
-        assert y_batch.shape[0] == self.batch_size
+            assert x_batch.shape[0] == self.batch_size
+            assert y_batch.shape[0] == self.batch_size
 
-        if self.parse_batches:
-            x_batch, y_batch = self.parse_batch(x_batch, y_batch)
+            if self.parse_batches:
+                x_batch, y_batch = self.parse_batch(x_batch, y_batch)
+        else:
+            self.__init__(file_paths=self.file_paths,
+                          batch_size=self.batch_size,
+                          parse_batches=self.parse_batches,
+                          use_gpu=self.use_gpu)
+
+            raise StopIteration
 
         return path_cache, x_batch, y_batch
 

@@ -108,13 +108,18 @@ def convert_aligned_reference_to_one_hot(reference_alignment):
     return matrix
 
 
-def convert_alignments_to_matrix(alignments):
+def convert_alignments_to_matrix(alignments, fixed_coverage=True):
     """
     For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1
     :param alignments:
     :return:
     """
-    n = MAX_COVERAGE
+
+    if fixed_coverage:
+        n = MAX_COVERAGE
+    else:
+        n = len(alignments)
+
     m = len(alignments[0][1])
 
     matrix = numpy.zeros([n, m])
@@ -701,8 +706,10 @@ def main():
     # window = [727360, 767280]       # nanopore broken alignment region...  very high loss in CNNRNN
     # window = [727200, 727220]       # nanopore broken alignment region...  very high loss in CNNRNN
     # window = [748220, 748240]       # nanopore broken alignment region...  very high loss in CNNRNN
-    window = [1105084, 1105104]   # very messy alignment even with spoa... why?
+    # window = [1105084, 1105104]   # very messy alignment even with spoa... why?
     # window = [246567, 246587]     # previously failing test case for collapsed reads
+
+    window = [800000, 800020]
 
     test_window(bam_file_path=bam_file_path,
                 reference_file_path=reference_file_path,
