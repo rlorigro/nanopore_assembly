@@ -1,6 +1,6 @@
 from handlers.FileManager import FileManager
 from handlers.DataLoader import DataLoader
-from models.Cnn import EncoderDecoder
+from models.Rnn import Decoder
 from matplotlib import pyplot
 from torch import nn
 from torch import optim
@@ -44,7 +44,7 @@ class ResultsHandler:
 def plot_prediction(x, y, y_predict):
     fig, axes = pyplot.subplots(nrows=3, gridspec_kw={'height_ratios': [1, 1, 10]})
 
-    x_data = x.data.numpy()[0, :, :, :].squeeze()
+    x_data = x.data.numpy()[0, :, :].squeeze()
     y_target_data = y.data.numpy()[0, :, :].squeeze()
     y_predict_data = y_predict.data.numpy()[0, :, :].squeeze()
 
@@ -67,6 +67,8 @@ def sequential_loss_CE(y_predict, y, loss_fn):
     # y shape = (n, 5, length)
 
     n, c, l = y_predict.shape
+
+    # print(n,c,l)
 
     y_target = torch.argmax(y, dim=1)
 
@@ -140,7 +142,7 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
         # print("y1", y.shape)
 
         n, h, w = x.shape
-        x = x.view([n,1,h,w])
+        # x = x.view([n,1,h,w])
 
         # n, h, w = y.shape
         # y = y.view([n,1,h,w])
@@ -189,8 +191,8 @@ def run(load_model=False, model_state_path=None):
 
     # Hyperparameters
     learning_rate = 1e-3
-    weight_decay = 0
-    dropout_rate = 0
+    weight_decay = 1e-4
+    dropout_rate = 0.1
 
     # Training parameters
     batch_size_train = 1
@@ -199,7 +201,7 @@ def run(load_model=False, model_state_path=None):
     checkpoint_interval = 1000
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train)
-    model = EncoderDecoder(hidden_size=hidden_size, input_size=input_channels, output_size=output_size, n_layers=n_layers, dropout_rate=dropout_rate)
+    model = Decoder(hidden_size=hidden_size, input_size=input_channels, output_size=output_size, n_layers=n_layers, dropout_rate=dropout_rate)
 
     # Initialize the optimizer with above parameters
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)

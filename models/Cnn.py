@@ -12,7 +12,7 @@ class Encoder(nn.Module):
     def __init__(self, input_size):
         super(Encoder, self).__init__()
 
-        self.kernel_size = 3
+        self.kernel_size = (3,1)
 
         self.leakyrelu = nn.LeakyReLU()
 
@@ -20,8 +20,8 @@ class Encoder(nn.Module):
         self.n_channels_1 = 3
         self.n_channels_2 = 6
 
-        self.conv2d_1 = nn.Conv2d(in_channels=self.n_channels_0, out_channels=self.n_channels_1, kernel_size=self.kernel_size, padding=1)
-        self.conv2d_2 = nn.Conv2d(in_channels=self.n_channels_1, out_channels=self.n_channels_2, kernel_size=self.kernel_size, padding=1)
+        self.conv2d_1 = nn.Conv2d(in_channels=self.n_channels_0, out_channels=self.n_channels_1, kernel_size=self.kernel_size, padding=(1,0))
+        self.conv2d_2 = nn.Conv2d(in_channels=self.n_channels_1, out_channels=self.n_channels_2, kernel_size=self.kernel_size, padding=(1,0))
 
     def convolution(self, x):
         # expected convolution input shape = (batch, channel, H, W)
