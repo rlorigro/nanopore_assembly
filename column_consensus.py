@@ -1,12 +1,17 @@
-from generate_spoa_pileups_from_bam import convert_alignments_to_matrix, convert_aligned_reference_to_one_hot, sequence_to_index
+from generate_spoa_pileups_from_bam import convert_collapsed_alignments_to_matrix
+from generate_spoa_pileups_from_bam import convert_aligned_reference_to_one_hot
+from generate_spoa_pileups_from_bam import convert_alignments_to_matrix
+from generate_spoa_pileups_from_bam import sequence_to_index, sequence_to_float
+from generate_spoa_pileups_from_bam import plot_collapsed_encodings
 from modules.IterativeHistogram import IterativeHistogram
+from matplotlib import pyplot
 import numpy
 
 
 class ConsensusCaller:
-    def __init__(self, sequence_to_index):
+    def __init__(self, sequence_to_index, sequence_to_float):
         self.index_to_sequence = self.get_inverse_dictionary(sequence_to_index)
-        self.histogram = IterativeHistogram(start=-0.1, stop=1.1, n_bins=6)
+        self.float_to_index = self.get_float_to_index(sequence_to_float, sequence_to_index)
 
     def get_inverse_dictionary(self, a):
         inverse = dict()
@@ -14,6 +19,14 @@ class ConsensusCaller:
             inverse[item[1]] = item[0]
 
         return inverse
+
+    def get_float_to_index(self, sequence_to_float, sequence_to_index):
+        float_to_index = dict()
+
+        for sequence, float_value in sequence_to_float.items():
+            float_to_index[float_value] = sequence_to_index[sequence]
+
+        return float_to_index
 
     def call_consensus_as_one_hot(self, pileup_matrix):
         """
@@ -23,6 +36,8 @@ class ConsensusCaller:
         :param format:
         :return:
         """
+        pileup_matrix = pileup_matrix.round(3)
+
         n, m = pileup_matrix.shape
 
         one_hot = numpy.zeros([5, m])
@@ -32,8 +47,9 @@ class ConsensusCaller:
             unique, inverse = numpy.unique(column, return_inverse=True)
             bincount = numpy.bincount(inverse)
             mode = bincount.argmax()
-            consensus_float = unique[mode]
-            character_index = self.histogram.get_bin(consensus_float)
+            consensus_code = round(float(unique[mode]),3)
+
+            character_index = self.float_to_index[consensus_code]
 
             one_hot[character_index, column_index] = 1
 
@@ -46,6 +62,8 @@ class ConsensusCaller:
         :param format:
         :return:
         """
+        pileup_matrix = pileup_matrix.round(3)
+
         n, m = pileup_matrix.shape
 
         consensus_characters = list()
@@ -55,8 +73,8 @@ class ConsensusCaller:
             unique, inverse = numpy.unique(column, return_inverse=True)
             bincount = numpy.bincount(inverse)
             mode = bincount.argmax()
-            consensus_float = unique[mode]
-            character_index = self.histogram.get_bin(consensus_float)
+            consensus_code = unique[mode]
+            character_index = self.float_to_index[consensus_code]
             character = self.index_to_sequence[character_index]
 
             consensus_characters.append(character)
@@ -71,18 +89,20 @@ class ConsensusCaller:
         :param format:
         :return:
         """
+        pileup_matrix = pileup_matrix.round(3)
+
         n, m = pileup_matrix.shape
 
-        encoding = numpy.zeros([1, m])
+        encoding = numpy.zeros([1, m], dtype=numpy.float64)
 
         for column_index in range(m):
             column = pileup_matrix[:, column_index]
             unique, inverse = numpy.unique(column, return_inverse=True)
             bincount = numpy.bincount(inverse)
             mode = bincount.argmax()
-            consensus_float = unique[mode]
+            consensus_code = unique[mode]
 
-            encoding[0, column_index] = round(consensus_float, 3)
+            encoding[0, column_index] = round(consensus_code, 3)
 
         return encoding
 
@@ -94,6 +114,8 @@ class ConsensusCaller:
         :param format:
         :return:
         """
+        pileup_matrix = pileup_matrix.round(3)
+
         n, m = pileup_matrix.shape
 
         one_hot = numpy.zeros([5, m])
@@ -105,8 +127,8 @@ class ConsensusCaller:
 
             n_characters = unique.shape[0]
             for i in range(n_characters):
-                consensus_float = unique[i]
-                character_index = self.histogram.get_bin(consensus_float)
+                consensus_code = unique[i]
+                character_index = self.float_to_index[consensus_code]
                 frequency = bincount[i]
 
                 one_hot[character_index, column_index] = frequency
@@ -116,6 +138,110 @@ class ConsensusCaller:
         one_hot = one_hot/column_sums
 
         return one_hot
+
+    def call_repeat_consensus_as_integer_vector(self, repeat_matrix, pileup_matrix, consensus_encoding):
+        """
+        For a repeat matrix which encodes the number of repeats for each character in a pileup of aligned sequences,
+        determine the consensus number of repeats for each column.
+        :param repeat_matrix:
+        :return:
+        """
+        pileup_matrix = pileup_matrix.round(3)
+        consensus_encoding = consensus_encoding.round(3)
+
+        n, m = pileup_matrix.shape
+
+        repeat_consensus = numpy.zeros([1, m])
+
+        for column_index in range(m):
+            pileup_column = pileup_matrix[:, column_index]
+            repeat_column = repeat_matrix[:, column_index]
+            pileup_column_consensus = consensus_encoding[0, column_index]
+
+            mask = (pileup_column == pileup_column_consensus)
+
+            repeats = repeat_column[mask]
+
+            # exit()
+
+            column_repeat_consensus = numpy.mean(repeats)
+            repeat_consensus[0,column_index] = column_repeat_consensus
+
+        repeat_consensus = numpy.round(repeat_consensus)
+
+        return repeat_consensus
+
+    def expand_collapsed_consensus_as_one_hot(self, consensus_encoding, repeat_consensus_encoding):
+        # blanks coded as 0 repeats, but for comparison sake, we want to include blanks
+        n_spaces = repeat_consensus_encoding.shape[1] - numpy.count_nonzero(repeat_consensus_encoding)
+
+        print(n_spaces)
+
+        run_length = int(numpy.sum(repeat_consensus_encoding, axis=1)) + n_spaces
+        expanded_one_hot = numpy.zeros([5, run_length])
+
+        n, m = repeat_consensus_encoding.shape
+
+        expanded_index = 0
+        for collapsed_index in range(m):
+            # blanks coded as 0 repeats, but for comparison sake, we want to include blanks
+            n_repeats = max(1,int(repeat_consensus_encoding[:,collapsed_index]))
+            consensus_code = float(consensus_encoding[:,collapsed_index])
+
+            character_index = self.float_to_index[consensus_code]
+
+            print(self.index_to_sequence[character_index], character_index, repeat_consensus_encoding[:,collapsed_index])
+
+            for i in range(n_repeats):
+                expanded_one_hot[character_index, expanded_index] = 1
+                expanded_index += 1
+
+        return expanded_one_hot
+
+    def expand_collapsed_consensus_as_string(self, consensus_encoding, repeat_consensus_encoding, ignore_spaces=False):
+        # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
+        n_spaces = repeat_consensus_encoding.shape[1] - numpy.count_nonzero(repeat_consensus_encoding)
+
+        consensus_characters = list()
+
+        n, m = repeat_consensus_encoding.shape
+
+        expanded_index = 0
+        for collapsed_index in range(m):
+            # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
+            n_repeats = max(1,int(repeat_consensus_encoding[:,collapsed_index]))
+            consensus_code = float(consensus_encoding[:,collapsed_index])
+
+            character_index = self.float_to_index[consensus_code]
+
+            if ignore_spaces:
+                if self.index_to_sequence[character_index] == "-":
+                    continue
+
+            for i in range(n_repeats):
+                consensus_characters.append(self.index_to_sequence[character_index])
+                expanded_index += 1
+
+        consensus_string = ''.join(consensus_characters)
+
+        return consensus_string
+
+    def decode_one_hot_to_string(self, one_hot_encoding):
+        consensus_characters = list()
+
+        n, m = one_hot_encoding.shape
+
+        indexes = numpy.argmax(one_hot_encoding, axis=n)
+
+        for i in range(m):
+            # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
+            character_index = indexes[:,i]
+            consensus_characters.append(self.index_to_sequence[character_index])
+
+        consensus_string = ''.join(consensus_characters)
+
+        return consensus_string
+
 
 
 def test_consensus_caller():
@@ -148,7 +274,7 @@ def test_consensus_caller():
     reference_matrix = convert_alignments_to_matrix([ref_alignment], fixed_coverage=False)
     reference_one_hot = convert_aligned_reference_to_one_hot([ref_alignment])
 
-    consensus_caller = ConsensusCaller(sequence_to_index)
+    consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
     consensus_string = consensus_caller.call_consensus_as_string(pileup_matrix)
     # consensus_one_hot = consensus_caller.call_consensus_as_one_hot(pileup_matrix)
@@ -171,5 +297,109 @@ def test_consensus_caller():
     print(consensus_normalized_frequency)
 
 
+def test_collapsed_consensus_caller():
+    alignments = [["0", "TG-TGC---T-GCTATC-G--C-G-T"],
+                  ["1", "TG-TGC--AT-GC--T-----C-G-T"],
+                  ["2", "TG-TGC--AT-GC--TC-G--T-G-T"],
+                  ["3", "TG-TGC--AT-G---T-------G-T"],
+                  ["4", "TG-TGC--AT-GC--T-----C-G-T"],
+                  ["5", "TG-TGC--AT-GC--T--G--C---T"],
+                  ["6", "TG-TGCT-AT-GC--T-----C-GAT"],
+                  ["7", "TG-TGC--AT-GC--TC-T--C-G-T"],
+                  ["8", "TG-TGC--AT-GC--TC-GTAT-G-T"],
+                  ["9", "TG-TGC--AT-G---T-------G-T"],
+                  ["10", "TG-TGC--AT-GC--T-----C-G-T"],
+                  ["11", "TG-TGC--AT-GC--TC-T--C-G-T"],
+                  ["12", "TG-TGCTGATAGC--T-------G-T"],
+                  ["13", "TG-TGC--AT-G---T-----C-G-T"],
+                  ["14", "TG-TGC--AT-GC--T-------GAT"],
+                  ["15", "TGCTGC--AT-GC--TCTG--C----"],
+                  ["16", "TG-TGC--ATAGC--T-------G-T"],
+                  ["17", "TGCTGC--AT-GC--T-----C-G-T"],
+                  ["18", "TG-TGC--AT-GC--T-------GAT"],
+                  ["19", "TG-TGC--ATAGC--T-----C-G-T"],
+                  ["20", "TG-TGC--AT-GC--T-----CAG-T"],
+                  ["21", "TG-TGC--AT-GC--TC-G--T--A-"]]
+
+    ref_alignment = [["ref", "TG-TGC--AT-GC--T-----C-G-T"]]
+    expanded_ref_alignment = [["ref", "TTTG--T--TGCC-----ATT-GC--T-T-----TC--G-G--T"]]
+
+    pileup_repeats = [[3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 4, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1, 1, 1],
+                      [2, 2, 2, 1, 2, 1, 1, 1, 4, 2, 1],
+                      [2, 2, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1, 2, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 2, 1, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 1, 3, 2, 1, 1, 1, 3, 2, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 4, 1, 3, 1],
+                      [6, 1, 1, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1],
+                      [2, 1, 1, 3, 1, 2, 1, 2, 1, 1, 2, 1, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 1, 3, 2, 1],
+                      [3, 1, 1, 1, 1, 1, 1, 2, 1, 1, 4, 1, 1, 1],
+                      [3, 1, 2, 1, 2, 2, 2, 1, 1, 3, 1, 1, 2],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 2, 2, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 2, 1, 1, 2, 1],
+                      [3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 1, 1, 1]]
+
+    ref_repeats = [[3, 1, 2, 1, 2, 1, 2, 1, 1, 3, 1, 2, 1]]
+
+    # reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
+    pileup_matrix, pileup_repeat_matrix = convert_collapsed_alignments_to_matrix(alignments, pileup_repeats, fixed_coverage=False)
+    reference_matrix, reference_repeat_matrix = convert_collapsed_alignments_to_matrix(ref_alignment, ref_repeats, fixed_coverage=False)
+
+    plot_collapsed_encodings(pileup_matrix=pileup_matrix,
+                             reference_matrix=reference_matrix,
+                             pileup_repeat_matrix=pileup_repeat_matrix,
+                             reference_repeat_matrix=reference_repeat_matrix)
+
+    consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
+
+    pileup_consensus = consensus_caller.call_consensus_as_encoding(pileup_matrix)
+    repeat_consensus = consensus_caller.call_repeat_consensus_as_integer_vector(repeat_matrix=pileup_repeat_matrix,
+                                                                                pileup_matrix=pileup_matrix,
+                                                                                consensus_encoding=pileup_consensus)
+
+    consensus_expanded_reference_matrix = consensus_caller.expand_collapsed_consensus_as_one_hot(consensus_encoding=pileup_consensus,
+                                                                                                 repeat_consensus_encoding=repeat_consensus)
+
+    expanded_reference_matrix = consensus_caller.expand_collapsed_consensus_as_one_hot(consensus_encoding=reference_matrix,
+                                                                                       repeat_consensus_encoding=reference_repeat_matrix)
+
+    consensus_reference_string = consensus_caller.expand_collapsed_consensus_as_string(consensus_encoding=pileup_consensus,
+                                                                                       repeat_consensus_encoding=repeat_consensus)
+
+    reference_string = consensus_caller.expand_collapsed_consensus_as_string(consensus_encoding=reference_matrix,
+                                                                             repeat_consensus_encoding=reference_repeat_matrix)
+
+    print(reference_repeat_matrix)
+    print(repeat_consensus.round())
+
+    # print(reference_matrix)
+    # print(consensus_expanded_reference_matrix)
+
+    print(consensus_reference_string)
+    print(reference_string)
+
+    fig, axes = pyplot.subplots(nrows=2)
+    axes[0].imshow(reference_repeat_matrix)
+    axes[1].imshow(repeat_consensus)
+
+    pyplot.show()
+    pyplot.close()
+
+    fig, axes = pyplot.subplots(nrows=2)
+    axes[0].imshow(consensus_expanded_reference_matrix)
+    axes[1].imshow(expanded_reference_matrix)
+
+    pyplot.show()
+
+
 if __name__ == "__main__":
-    test_consensus_caller()
+    # test_consensus_caller()
+    test_collapsed_consensus_caller()
