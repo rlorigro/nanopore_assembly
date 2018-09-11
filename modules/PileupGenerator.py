@@ -3,17 +3,18 @@ from handlers.FastaHandler import FastaHandler
 from collections import defaultdict
 
 
+MAX_COVERAGE = 50
 DEFAULT_MIN_MAP_QUALITY = 5
 
 
 class PileupGenerator:
-    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads, max_coverage):
+    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
         # candidate finder includes end position, so should the reference sequence
         self.chromosome_name = chromosome_name
         self.start_position = start_position
         self.end_position = end_position
         self.ref_sequence = ref_sequence
-        self.max_coverage = max_coverage
+        self.max_coverage = MAX_COVERAGE
 
         self.reads = reads
 

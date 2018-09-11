@@ -1,14 +1,8 @@
-from generate_spoa_pileups_from_bam import sequence_to_index
 from handlers.FileManager import FileManager
 from handlers.DataLoader import DataLoader
-from models.Cnn import EncoderDecoder
-from column_consensus import *
+from modules.ConsensusCaller import *
 from matplotlib import pyplot
-from torch import nn
-from torch import optim
-from os import path
 import torch
-import datetime
 
 
 def normalize_confusion_matrix(confusion_matrix):
