@@ -40,6 +40,9 @@ class FastaHandler:
         """
         return self.fasta.get_reference_length(chromosome_name)
 
+    def get_contig_names(self):
+        return self.fasta.references
+
     def get_ref_of_region(self, contig, site):
         """
         Return a string containing reference of a site

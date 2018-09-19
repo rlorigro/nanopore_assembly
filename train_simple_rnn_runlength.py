@@ -1,14 +1,13 @@
+from modules.train_test_utils import plot_prediction
+from handlers.DataLoaderRunlength import DataLoader
 from handlers.FileManager import FileManager
-from handlers.DataLoader import DataLoader
-from models.Rnn import Decoder
+from models.SimpleRnn import Decoder
 from matplotlib import pyplot
 from torch import nn
 from torch import optim
 from os import path
 import torch
 import datetime
-import numpy
-import csv
 
 
 class ResultsHandler:
@@ -39,27 +38,6 @@ class ResultsHandler:
 
     def save_config(self, model):
         pass
-
-
-def plot_prediction(x, y, y_predict):
-    fig, axes = pyplot.subplots(nrows=3, gridspec_kw={'height_ratios': [1, 1, 10]})
-
-    x_data = x.data.numpy()[0, :, :].squeeze()
-    y_target_data = y.data.numpy()[0, :, :].squeeze()
-    y_predict_data = y_predict.data.numpy()[0, :, :].squeeze()
-
-    # print(x_data.shape)
-
-    axes[2].imshow(x_data)
-    axes[1].imshow(y_target_data)
-    axes[0].imshow(y_predict_data)
-
-    axes[2].set_ylabel("x")
-    axes[1].set_ylabel("y")
-    axes[0].set_ylabel("y*")
-
-    pyplot.show()
-    pyplot.close()
 
 
 def sequential_loss_CE(y_predict, y, loss_fn):
@@ -136,16 +114,23 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
     losses = list()
 
     for b, batch in enumerate(data_loader):
-        paths, x, y = batch
+        paths, x_pileup, y_pileup, x_repeat, y_repeat = batch
 
         # print("x1", x.shape)
         # print("y1", y.shape)
 
-        n, h, w = x.shape
+        n, h, w = x_pileup.shape
         # x = x.view([n,1,h,w])
 
-        # n, h, w = y.shape
-        # y = y.view([n,1,h,w])
+        n, h, w = x_repeat.shape
+        # x = x.view([n,1,h,w])
+
+        x = torch.cat([x_pileup, x_repeat], dim=1)
+        y = y_pileup
+        # y = torch.cat([y_pileup, y_repeat], dim=1)
+
+        # print(x.shape)
+        # print(y.shape)
 
         # print("x2", x.shape)
         # print("y2", y.shape)
@@ -153,9 +138,11 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
         # expected convolution input = (batch, channel, H, W)
         # y_predict shape = (batch_size, seq_len, hidden_size*num_directions)
         loss, y_predict = train_batch(model=model, x=x, y=y, optimizer=optimizer, loss_fn=loss_fn)
-        losses.append(loss)
 
-        print(b, loss)
+        avg_loss = loss/w
+        losses.append(avg_loss)
+
+        print(b, avg_loss)
 
         if loss > 100:
             print("Warning: extreme loss observed for training example:", paths[0])
@@ -164,7 +151,7 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
             results_handler.save_model(model)
 
             print(paths[0])
-            plot_prediction(x=x,y=y,y_predict=y_predict)
+            plot_prediction(x=x, y=y, y_predict=y_predict)
 
             pyplot.plot(losses)
             pyplot.show()
@@ -174,33 +161,30 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
 
 
 def run(load_model=False, model_state_path=None):
-    # directory = "/home/ryan/code/nanopore_assembly/output/pileup_generation_2018-8-24-12-54-20-4-236"       # poapy
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-13-51-41-0-239"  # spoa
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-8-27-16-13-23-0-239"  # spoa with 2 pass alignment
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr1_full/train"   # spoa 2 pass variants excluded
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-12-15-25-8-2-255"     # spoa 2 pass arbitray region 2500 windows
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     results_handler = ResultsHandler()
 
     # Architecture parameters
-    hidden_size = 16
-    input_channels = 1      # 1-dimensional signal
+    hidden_size = 64
+    input_channels = 5*2      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
-    n_layers = 3
+    n_layers = 2
 
     # Hyperparameters
-    learning_rate = 1e-3
-    weight_decay = 1e-4
+    learning_rate = 1e-4
+    weight_decay = 1e-5
     dropout_rate = 0.1
 
     # Training parameters
     batch_size_train = 1
     n_batches = 8000
 
-    checkpoint_interval = 1000
+    checkpoint_interval = 200
 
-    data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train)
+    data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train, convert_to_frequency=True, convert_repeats_to_counts=True)
     model = Decoder(hidden_size=hidden_size, input_size=input_channels, output_size=output_size, n_layers=n_layers, dropout_rate=dropout_rate)
 
     # Initialize the optimizer with above parameters

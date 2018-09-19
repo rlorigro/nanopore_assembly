@@ -47,6 +47,9 @@ class DataLoader:
         self.parse_batches = parse_batches
         self.convert_to_frequency = convert_to_frequency
 
+    def __len__(self):
+        return self.n_files
+
     def load_next_file(self, path_cache, x_cache, y_cache):
         """
         Assuming there is another file in the list of paths, load it and concatenate with the leftover entries from last

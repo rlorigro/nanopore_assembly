@@ -40,23 +40,19 @@ class ResultsHandler:
         pass
 
 
-def sequential_loss_CE(y_predict, y, loss_fn):
+def sum_sequential_loss_CE(y_predict, y, loss_fn):
     # x shape = (n, 5, length)
     # y shape = (n, 5, length)
 
     n, c, l = y_predict.shape
 
-    # print(n,c,l)
-
+    # get index of target one hot
     y_target = torch.argmax(y, dim=1)
 
     loss = None
 
     for i in range(l):
         if i == 0:
-            # print(y[:,:,i])
-            # print(torch.nn.functional.softmax(y_predict[:,:,i]))
-
             loss = loss_fn(y_predict[:,:,i], y_target[:,i])
         else:
             loss += loss_fn(y_predict[:,:,i], y_target[:,i])
@@ -64,33 +60,31 @@ def sequential_loss_CE(y_predict, y, loss_fn):
     return loss
 
 
-def sequential_loss_MSE(y_predict, y_target, loss_fn):
+def sequential_loss_CE(y_predict, y, loss_fn):
     # x shape = (n, 5, length)
     # y shape = (n, 5, length)
 
     n, c, l = y_predict.shape
 
-    loss = None
+    # get index of target one hot
+    y_target = torch.argmax(y, dim=1)
+
+    losses = list()
 
     for i in range(l):
-        if i == 0:
-            # print(y_predict[:,:,i])
-            # print(y_target[:,:,i])
+        loss = loss_fn(y_predict[:,:,i], y_target[:,i])
+        losses.append(loss)
 
-            loss = loss_fn(y_predict[:,:,i], y_target[:,:,i])
-        else:
-            loss += loss_fn(y_predict[:,:,i], y_target[:,:,i])
-
-    return loss
+    return losses
 
 
-def train_batch(model, x, y, optimizer, loss_fn):
+def train_batch_sum(model, x, y, optimizer, loss_fn):
     # Run forward calculation
     y_predict = model.forward(x)
 
     # Compute loss.
     # loss = loss_fn(y_predict, y)
-    loss = sequential_loss_CE(y_predict, y, loss_fn)
+    loss = sum_sequential_loss_CE(y_predict, y, loss_fn)
 
     # Before the backward pass, use the optimizer object to zero all of the
     # gradients for the variables it will update (which are the learnable weights
@@ -106,6 +100,31 @@ def train_batch(model, x, y, optimizer, loss_fn):
     optimizer.step()
 
     return loss.item(), y_predict
+
+
+def train_batch_sequential(model, x, y, optimizer, loss_fn):
+    # Run forward calculation
+    y_predict = model.forward(x)
+
+    # Compute loss.
+    # loss = loss_fn(y_predict, y)
+    losses = sequential_loss_CE(y_predict, y, loss_fn)
+
+    # Before the backward pass, use the optimizer object to zero all of the
+    # gradients for the variables it will update (which are the learnable weights
+    # of the model)
+    optimizer.zero_grad()
+
+    # Backward pass: compute gradient of the loss with respect to model
+    # parameters
+    for loss in losses:
+        loss.backward(retain_graph=True)
+
+    # Calling the step function on an Optimizer makes an update to its
+    # parameters
+    optimizer.step()
+
+    return torch.sum(torch.stack(losses)).item(), y_predict
 
 
 def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, checkpoint_interval):
@@ -130,7 +149,7 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
 
         # expected convolution input = (batch, channel, H, W)
         # y_predict shape = (batch_size, seq_len, hidden_size*num_directions)
-        loss, y_predict = train_batch(model=model, x=x, y=y, optimizer=optimizer, loss_fn=loss_fn)
+        loss, y_predict = train_batch_sequential(model=model, x=x, y=y, optimizer=optimizer, loss_fn=loss_fn)
         avg_loss = loss/w
         losses.append(avg_loss)
 
@@ -153,14 +172,15 @@ def train(model, data_loader, optimizer, loss_fn, n_batches, results_handler, ch
 
 
 def run(load_model=False, model_state_path=None):
-    directory = "/home/ryan/code/nanopore_assembly/output/chr1_800k-1200k_standard_20width/chr1/train"     # spoa 2 pass arbitray region 2500 windows
+    # directory = "/home/ryan/code/nanopore_assembly/output/chr1_800k-1200k_standard_20width/chr1/train"     # spoa 2 pass arbitray region 2500 windows
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-17-12-26-0-0-260"  # spoa 2 pass celegans 13k windows
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     results_handler = ResultsHandler()
 
     # Architecture parameters
-    hidden_size = 64
+    hidden_size = 32
     input_channels = 5      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
     n_layers = 2

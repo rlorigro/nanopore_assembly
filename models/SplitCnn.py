@@ -13,7 +13,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.kernel_size_vertical = (3,1)
-        self.kernel_size_horizontal = (1,5)
+        self.kernel_size_horizontal = (1,3)
 
         self.leakyrelu = nn.LeakyReLU()
 
@@ -38,12 +38,12 @@ class Encoder(nn.Module):
         self.conv2d_1_horizontal = nn.Conv2d(in_channels=self.n_channels_0_horizontal,
                                              out_channels=self.n_channels_1_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,2))
+                                             padding=(0,1))
 
         self.conv2d_2_horizontal = nn.Conv2d(in_channels=self.n_channels_1_horizontal,
                                              out_channels=self.n_channels_2_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,2))
+                                             padding=(0,1))
 
     def vertical_convolution(self, x):
         # expected convolution input shape = (batch, channel, H, W)

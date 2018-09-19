@@ -35,7 +35,7 @@ class PileupGenerator:
                 read.query_name = read.query_name + '_1' if read.is_read1 else read.query_name + '_2'
                 self.get_aligned_segment_from_read(read)
 
-            if r > self.max_coverage:
+            if r == self.max_coverage:
                 break
 
         return self.sequences
@@ -54,7 +54,7 @@ class PileupGenerator:
         cigar_tuples = read.cigartuples
         read_sequence = read.query_sequence
         read_id = read.query_name
-        read_quality = read.query_qualities
+        # read_quality = read.query_qualities
 
         # read_index: index of read sequence
         # ref_index: index of reference sequence
@@ -71,7 +71,7 @@ class PileupGenerator:
             length = cigar[1]
 
             # get the sequence segments that are effected by this operation
-            read_quality_segment = read_quality[read_index:read_index + length]
+            # read_quality_segment = read_quality[read_index:read_index + length]
             read_sequence_segment = read_sequence[read_index:read_index + length]
 
             # skip parsing the first segment if it is not a match

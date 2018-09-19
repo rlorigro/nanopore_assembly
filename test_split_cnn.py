@@ -131,16 +131,16 @@ def test_consensus(consensus_caller, data_loader):
 
 
 def run():
-    model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-9-10-16-56-20-0-253/model_checkpoint_9"
+    model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-9-14-14-17-3-4-257/model_checkpoint_5"
     directory = "/home/ryan/code/nanopore_assembly/output/chr1_800k-1200k_standard_20width/chr1/test"     # no variants, chr1:1200k 200 window test
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     # Architecture parameters
-    hidden_size = 64
+    hidden_size = 128
     input_channels = 1      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
-    n_layers = 2
+    n_layers = 1
 
     # Hyperparameters
     dropout_rate = 0.1

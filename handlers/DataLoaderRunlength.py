@@ -1,4 +1,8 @@
+import sys
 from os import walk, path
+sys.path.append(path.dirname(sys.path[0]))
+from modules.pileup_utils import trim_empty_rows, sequence_to_float, sequence_to_index
+from modules.ConsensusCaller import ConsensusCaller
 from matplotlib import pyplot
 import numpy
 import torch
@@ -51,7 +55,7 @@ def get_all_file_paths_by_type(parent_directory_path, file_extension, sort=True)
 
 
 class DataLoader:
-    def __init__(self, file_paths, batch_size, parse_batches=True, use_gpu=False):
+    def __init__(self, file_paths, batch_size, parse_batches=True, use_gpu=False, convert_to_frequency=False, convert_repeats_to_counts=False):
         self.file_paths = file_paths
 
         self.path_iterator = iter(file_paths)
@@ -62,6 +66,11 @@ class DataLoader:
 
         self.batch_size = batch_size
         self.parse_batches = parse_batches
+        self.convert_to_frequency = convert_to_frequency
+        self.convert_repeats_to_counts = convert_repeats_to_counts
+
+    def __len__(self):
+        return self.n_files
 
     def load_next_file(self, path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache):
         """
@@ -117,6 +126,50 @@ class DataLoader:
 
         return x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch
 
+    def convert_pileup_to_frequency(self, x_pileup_batch):
+        caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
+
+        batch_size, height, width = x_pileup_batch.shape
+        # print("before", x_batch.shape)
+
+        frequency_matrices = list()
+        for b in range(batch_size):
+            x_pileup = x_pileup_batch[b,:,:]
+
+            x_pileup = trim_empty_rows(x_pileup, background_value=sequence_to_float["-"])
+
+            normalized_frequencies = caller.get_normalized_frequencies(x_pileup)
+            normalized_frequencies = numpy.expand_dims(normalized_frequencies, axis=0)
+
+            frequency_matrices.append(normalized_frequencies)
+
+        x_batch = numpy.concatenate(frequency_matrices, axis=0)
+
+        return x_batch
+
+    def convert_repeat_matrix_to_counts(self, x_pileup_batch, x_repeat_batch):
+        caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
+
+        batch_size, height, width = x_repeat_batch.shape
+        # print("before", x_batch.shape)
+
+        repeat_matrices = list()
+        for b in range(batch_size):
+            x_repeat = x_repeat_batch[b,:,:]
+            x_pileup = x_pileup_batch[b,:,:]
+
+            x_pileup = trim_empty_rows(x_pileup, background_value=sequence_to_float["-"])
+            x_repeat = trim_empty_rows(x_repeat, background_value=sequence_to_float["-"])
+
+            repeat_counts = caller.get_avg_repeat_counts(pileup_matrix=x_pileup, repeat_matrix=x_repeat)
+            repeat_counts = numpy.expand_dims(repeat_counts, axis=0)
+
+            repeat_matrices.append(repeat_counts)
+
+        x_batch = numpy.concatenate(repeat_matrices, axis=0)
+
+        return x_batch
+
     def __next__(self):
         """
         Get the next batch data. DOES NOT RETURN FINAL BATCH IF != BATCH SIZE
@@ -135,14 +188,22 @@ class DataLoader:
             assert x_repeat_batch.shape[0] == self.batch_size
             assert y_repeat_batch.shape[0] == self.batch_size
 
+            if self.convert_repeats_to_counts:
+                x_repeat_batch = self.convert_repeat_matrix_to_counts(x_pileup_batch=x_pileup_batch, x_repeat_batch=x_repeat_batch)
+
+            if self.convert_to_frequency:
+                x_pileup_batch = self.convert_pileup_to_frequency(x_pileup_batch)
+
             if self.parse_batches:
                 x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch = \
                     self.parse_batch(x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch)
+
         else:
             self.__init__(file_paths=self.file_paths,
                           batch_size=self.batch_size,
                           parse_batches=self.parse_batches,
-                          use_gpu=self.use_gpu)
+                          use_gpu=self.use_gpu,
+                          convert_to_frequency=self.convert_to_frequency)
 
             raise StopIteration
 
@@ -158,7 +219,7 @@ if __name__ == "__main__":
     directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-12-26-1-1-247"
     file_paths = get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz")
 
-    data_loader = DataLoader(file_paths=file_paths, batch_size=1, parse_batches=False)
+    data_loader = DataLoader(file_paths=file_paths, batch_size=1, parse_batches=False, convert_to_frequency=True)
 
     for path_cache, x_pileup, y_pileup, x_repeat, y_repeat in data_loader:
         print(x_pileup.shape, y_pileup.shape, x_repeat.shape, y_repeat.shape)

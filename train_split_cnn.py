@@ -163,10 +163,10 @@ def run(load_model=False, model_state_path=None):
     hidden_size = 128
     input_channels = 1      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
-    n_layers = 2
+    n_layers = 1
 
     # Hyperparameters
-    learning_rate = 1e-4
+    learning_rate = 1e-3
     weight_decay = 1e-5
     dropout_rate = 0.1
 

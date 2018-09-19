@@ -19,6 +19,7 @@ sequence_to_index = {"-":0,
                      "T":3,
                      "C":4}
 
+index_to_float = [0.02, 0.2, 0.4, 0.6, 0.8]
 
 def visualize_matrix(matrix):
     pyplot.imshow(matrix, cmap="viridis")

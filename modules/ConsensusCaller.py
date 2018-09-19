@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.dirname(sys.path[0]))
 from modules.pileup_utils import convert_collapsed_alignments_to_matrix
 from modules.pileup_utils import convert_aligned_reference_to_one_hot
 from modules.pileup_utils import convert_alignments_to_matrix
@@ -5,9 +8,6 @@ from modules.pileup_utils import sequence_to_index, sequence_to_float
 from modules.pileup_utils import plot_collapsed_encodings
 from matplotlib import pyplot
 import numpy
-import sys
-import os
-sys.path.append(os.path.dirname(sys.path[0]))
 
 
 class ConsensusCaller:
@@ -129,6 +129,7 @@ class ConsensusCaller:
         :return:
         """
         pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
 
         n, m = pileup_matrix.shape
 
@@ -153,7 +154,7 @@ class ConsensusCaller:
 
         return one_hot
 
-    def get_repeat_counts(self, pileup_matrix, repeat_matrix):
+    def get_avg_repeat_counts(self, pileup_matrix, repeat_matrix):
         """
         For a pileup and repeat matrix return a 2 channel matrix with the normalized frequency and average repeat count
         for each allele in the pileup.
@@ -173,19 +174,79 @@ class ConsensusCaller:
             repeat_column = repeat_matrix[:, column_index]
 
             for c,character in enumerate(["-","A","G","T","C"]):
-                float = sequence_to_float[character]
+                float_value = sequence_to_float[character]
 
-                mask = (pileup_column == float)
+                mask = (pileup_column == float_value)
 
                 repeats = repeat_column[mask]
 
-                avg_repeat = numpy.average(repeats)
+                n = int(numpy.count_nonzero(mask))
 
-                repeat_counts[c,column_index] = avg_repeat
+                if n == 0:
+                    average = 0
+                else:
+                    total = float(numpy.sum(repeats))
+                    average = total/n
 
-        repeat_counts = numpy.round(repeat_counts)
+                repeat_counts[c,column_index] = average
+
+        repeat_counts = numpy.round(repeat_counts,3)
 
         return repeat_counts
+
+    def get_repeat_counts(self, pileup_matrix, repeat_matrix):
+        """
+        For a pileup and repeat matrix return a 2 channel matrix with the normalized frequency and average repeat count
+        for each allele in the pileup.
+        :param pileup_matrix:
+        :param repeat_matrix:
+        :return:
+        """
+        pileup_matrix = pileup_matrix.round(3)
+
+        n, m = pileup_matrix.shape
+
+        repeat_counts = numpy.zeros([5, m])
+
+        for column_index in range(m):
+            pileup_column = pileup_matrix[:, column_index]
+            repeat_column = repeat_matrix[:, column_index]
+
+            for c,character in enumerate(["-","A","G","T","C"]):
+                float_value = sequence_to_float[character]
+
+                mask = (pileup_column == float_value)
+
+                repeats = repeat_column[mask]
+
+                n = int(numpy.count_nonzero(mask))
+
+                if n == 0:
+                    average = 0
+                else:
+                    total = float(numpy.sum(repeats))
+                    average = total/n
+
+                repeat_counts[c,column_index] = average
+
+        repeat_counts = numpy.round(repeat_counts,3)
+
+        return repeat_counts
+
+    def mode(self, x):
+        unique, inverse = numpy.unique(x, return_inverse=True)
+        bincount = numpy.bincount(inverse)
+        mode_index = bincount.argmax()
+        mode = unique[mode_index]
+
+        # print()
+        # print(x)
+        # print(unique)
+        # print(inverse)
+        # print(bincount)
+        # print(mode)
+
+        return mode
 
     def call_repeat_consensus_as_integer_vector(self, repeat_matrix, pileup_matrix, consensus_encoding):
         """
@@ -195,6 +256,8 @@ class ConsensusCaller:
         :return:
         """
         pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
+
         consensus_encoding = consensus_encoding.round(3)
 
         n, m = pileup_matrix.shape
@@ -208,22 +271,54 @@ class ConsensusCaller:
 
             mask = (pileup_column == pileup_column_consensus)
 
+            # print(repeat_column.shape)
+            # print(mask.shape)
+
             repeats = repeat_column[mask]
 
             # exit()
 
-            column_repeat_consensus = numpy.mean(repeats)
+            column_repeat_consensus = self.mode(repeats)
             repeat_consensus[0,column_index] = column_repeat_consensus
 
         repeat_consensus = numpy.round(repeat_consensus)
 
         return repeat_consensus
 
+    def get_consensus_repeats(self, repeat_matrix, pileup_matrix, consensus_encoding):
+        """
+        For a repeat matrix which encodes the number of repeats for each character in a pileup of aligned sequences,
+        retrieve the repeats that correspond to the consensus character at each column.
+        :param repeat_matrix:
+        :return:
+        """
+        pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
+
+        consensus_encoding = consensus_encoding.round(3)
+
+        n, m = pileup_matrix.shape
+
+        repeats = list()
+
+        for column_index in range(m):
+            pileup_column = pileup_matrix[:, column_index]
+            repeat_column = repeat_matrix[:, column_index]
+            pileup_column_consensus = consensus_encoding[0, column_index]
+
+            mask = (pileup_column == pileup_column_consensus)
+
+            column_repeats = repeat_column[mask]
+
+            repeats.append(column_repeats)
+
+        return repeats
+
     def expand_collapsed_consensus_as_one_hot(self, consensus_encoding, repeat_consensus_encoding):
         # blanks coded as 0 repeats, but for comparison sake, we want to include blanks
         n_spaces = repeat_consensus_encoding.shape[1] - numpy.count_nonzero(repeat_consensus_encoding)
 
-        print(n_spaces)
+        # print(n_spaces)
 
         run_length = int(numpy.sum(repeat_consensus_encoding, axis=1)) + n_spaces
         expanded_one_hot = numpy.zeros([5, run_length])
@@ -238,7 +333,7 @@ class ConsensusCaller:
 
             character_index = self.float_to_index[consensus_code]
 
-            print(self.index_to_sequence[character_index], character_index, repeat_consensus_encoding[:,collapsed_index])
+            # print(self.index_to_sequence[character_index], character_index, repeat_consensus_encoding[:,collapsed_index])
 
             for i in range(n_repeats):
                 expanded_one_hot[character_index, expanded_index] = 1
@@ -279,7 +374,7 @@ class ConsensusCaller:
 
         n, m = one_hot_encoding.shape
 
-        indexes = numpy.argmax(one_hot_encoding, axis=n)
+        indexes = numpy.argmax(one_hot_encoding, axis=0)
 
         for i in range(m):
             # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
@@ -290,6 +385,23 @@ class ConsensusCaller:
 
         return consensus_string
 
+    def encode_one_hot_as_float(self, one_hot_encoding):
+        n, m = one_hot_encoding.shape
+
+        encoding = numpy.zeros([1,m])
+
+        indexes = numpy.argmax(one_hot_encoding, axis=0)
+
+        for i in range(m):
+            # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
+            character_index = indexes[i]
+            encoding[0,i] = sequence_to_float[self.index_to_sequence[character_index]]
+
+        # consensus_string = ''.join(consensus_characters)
+        # print(one_hot_encoding)
+        # print(encoding)
+
+        return encoding
 
 
 def test_consensus_caller():
@@ -401,10 +513,10 @@ def test_collapsed_consensus_caller():
     pileup_matrix, pileup_repeat_matrix = convert_collapsed_alignments_to_matrix(alignments, pileup_repeats, fixed_coverage=False)
     reference_matrix, reference_repeat_matrix = convert_collapsed_alignments_to_matrix(ref_alignment, ref_repeats, fixed_coverage=False)
 
-    plot_collapsed_encodings(pileup_matrix=pileup_matrix,
-                             reference_matrix=reference_matrix,
-                             pileup_repeat_matrix=pileup_repeat_matrix,
-                             reference_repeat_matrix=reference_repeat_matrix)
+    # plot_collapsed_encodings(pileup_matrix=pileup_matrix,
+    #                          reference_matrix=reference_matrix,
+    #                          pileup_repeat_matrix=pileup_repeat_matrix,
+    #                          reference_repeat_matrix=reference_repeat_matrix)
 
     consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
@@ -425,27 +537,35 @@ def test_collapsed_consensus_caller():
     reference_string = consensus_caller.expand_collapsed_consensus_as_string(consensus_encoding=reference_matrix,
                                                                              repeat_consensus_encoding=reference_repeat_matrix)
 
-    print(reference_repeat_matrix)
-    print(repeat_consensus.round())
+    # print(reference_repeat_matrix)
+    # print(repeat_consensus.round())
 
     # print(reference_matrix)
     # print(consensus_expanded_reference_matrix)
 
-    print(consensus_reference_string)
-    print(reference_string)
+    # print(consensus_reference_string)
+    # print(reference_string)
 
-    fig, axes = pyplot.subplots(nrows=2)
-    axes[0].imshow(reference_repeat_matrix)
-    axes[1].imshow(repeat_consensus)
+    character_frequencies = consensus_caller.get_normalized_frequencies(pileup_matrix=pileup_matrix)
+    repeat_counts = consensus_caller.get_avg_repeat_counts(pileup_matrix=pileup_matrix, repeat_matrix=pileup_repeat_matrix)
 
+    pyplot.imshow(character_frequencies)
     pyplot.show()
-    pyplot.close()
-
-    fig, axes = pyplot.subplots(nrows=2)
-    axes[0].imshow(consensus_expanded_reference_matrix)
-    axes[1].imshow(expanded_reference_matrix)
-
+    pyplot.imshow(repeat_counts)
     pyplot.show()
+
+    # fig, axes = pyplot.subplots(nrows=2)
+    # axes[0].imshow(reference_repeat_matrix)
+    # axes[1].imshow(repeat_consensus)
+    #
+    # pyplot.show()
+    # pyplot.close()
+    #
+    # fig, axes = pyplot.subplots(nrows=2)
+    # axes[0].imshow(consensus_expanded_reference_matrix)
+    # axes[1].imshow(expanded_reference_matrix)
+    #
+    # pyplot.show()
 
 
 if __name__ == "__main__":

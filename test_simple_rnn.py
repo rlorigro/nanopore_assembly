@@ -131,13 +131,14 @@ def test_consensus(consensus_caller, data_loader):
 
 
 def run():
-    model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-9-10-15-59-44-0-253/model_checkpoint_11"
-    directory = "/home/ryan/code/nanopore_assembly/output/chr1_800k-1200k_standard_20width/chr1/test"     # no variants, chr1:1200k 200 window test
+    model_state_path = "/home/ryan/code/nanopore_assembly/output/simple_rnn_2_layer_32_hidden_celegans/model_checkpoint_10"
+    # directory = "/home/ryan/code/nanopore_assembly/output/chr1_800k-1200k_standard_20width/chr1/test"     # no variants, chr1:1200k 200 window test
+    directory = "/home/ryan/code/nanopore_assembly/output/celegans_250_window_test_1m"       # celegans 50 windows
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     # Architecture parameters
-    hidden_size = 64
+    hidden_size = 32
     input_channels = 5      # 1-dimensional signal
     output_size = 5         # '-','A','C','T','G' one hot vector
     n_layers = 2

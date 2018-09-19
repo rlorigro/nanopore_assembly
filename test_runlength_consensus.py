@@ -110,8 +110,11 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
         batch_size, height, width = x_pileup.shape
 
         for n in range(batch_size):
+            # print(y_pileup.shape)
+            y_pileup_n = consensus_caller.encode_one_hot_as_float(y_pileup[n,:,:])
+
             x_pileup_n = x_pileup[n,:,:].reshape([height,width])
-            y_pileup_n = y_pileup[n,:,:].reshape([1,width])
+            y_pileup_n = y_pileup_n.reshape([1,width])
             x_repeat_n = x_repeat[n,:,:].reshape([height,width])
             y_repeat_n = y_repeat[n,:,:].reshape([1,width])
 
@@ -127,9 +130,14 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
                 print(paths[0])
                 continue
 
-            y_repeat_predict = consensus_caller.call_repeat_consensus_as_integer_vector(repeat_matrix=x_repeat_n,
-                                                                                        pileup_matrix=x_pileup_n,
-                                                                                        consensus_encoding=y_pileup_predict)
+            try:
+                y_repeat_predict = consensus_caller.call_repeat_consensus_as_integer_vector(repeat_matrix=x_repeat_n,
+                                                                                            pileup_matrix=x_pileup_n,
+                                                                                            consensus_encoding=y_pileup_predict)
+            except IndexError:
+                print(x_pileup_n.shape)
+                print(x_repeat_n.shape)
+                continue
 
             # decode as string to compare with non-runlength version
             expanded_consensus_string = \
@@ -145,8 +153,8 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
             # realign strings to each other and convert to one hot
             y_pileup_predict_expanded, y_pileup_expanded = \
-                realign_expanded_consensus_to_reference(expanded_sequence=expanded_consensus_string,
-                                                        ref_sequence=expanded_reference_string)
+                realign_consensus_to_reference(consensus_sequence=expanded_consensus_string,
+                                               ref_sequence=expanded_reference_string, print_alignment=False)
 
             y_pileup_predict_expanded = torch.FloatTensor(y_pileup_predict_expanded)
             y_pileup_expanded = torch.FloatTensor(y_pileup_expanded)
@@ -185,8 +193,8 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
                     # plot_prediction(x=x_pileup_n, y=y_pileup_n.numpy(), y_predict=y_pileup_predict.numpy())
 
-    total_sequence_confusion = normalize_confusion_matrix(total_sequence_confusion)
-    total_expanded_confusion = normalize_confusion_matrix(total_expanded_confusion)
+    # total_sequence_confusion = normalize_confusion_matrix(total_sequence_confusion)
+    # total_expanded_confusion = normalize_confusion_matrix(total_expanded_confusion)
 
     plot_confusion(total_sequence_confusion)
     plot_confusion(total_expanded_confusion)
@@ -195,7 +203,8 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
 def run():
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-12-26-1-1-247"    # arbitrary test 800k
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-6-13-16-52-3-249"    # 2500 window test
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-6-13-16-52-3-249"    # 2500 window test
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_1mbp_2018-9-18"   # c elegans
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
@@ -207,6 +216,7 @@ def run():
 
     consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
+    print(len(data_loader))
     test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, plot_mismatches=False)
 
 
