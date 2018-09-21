@@ -85,19 +85,22 @@ class RunlengthClassifier():
 
                 log_sum += float(prob_x_i_given_y_j)
 
-                print(x_i, y_j, prob_x_i_given_y_j)
+                # print(x_i, y_j, prob_x_i_given_y_j)
 
             log_likelihood_y[y_j,0] = log_sum
 
         j_max = numpy.argmax(log_likelihood_y)
 
-        normalized_y_likelihoods = self.normalize_likelihoods(log_likelihood_y=log_likelihood_y, max_index=j_max)
+        normalized_y_log_likelihoods = self.normalize_likelihoods(log_likelihood_y=log_likelihood_y, max_index=j_max)
 
-        return normalized_y_likelihoods, j_max
+        return normalized_y_log_likelihoods, j_max
 
+    def print_normalized_likelihoods(self, normalized_likelihoods):
+        for i in range(normalized_likelihoods.shape[0]):
+            print("%d:\t%.3f" % (i,float(normalized_likelihoods[i,:])))
 
 def test():
-    matrix_path = "/home/ryan/code/nanopore_assembly/output/runlength_probability_matrix/runlength_probability_matrix2018-9-20-14-21-6.npz"
+    matrix_path = "models/parameters/runlength_frequency_matrix_2018-9-20-14-21-6.npz"
     matrix = numpy.load(matrix_path)['a']
     matrix = matrix[1:,1:]   # trim 0 columns (for now)
 
@@ -112,7 +115,10 @@ def test():
         x = input_string.strip().split(" ")
         x = numpy.array(list(map(int, x)))
 
-        runlength_classifier.predict(x)
+        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x)
+
+        runlength_classifier.print_normalized_likelihoods(10**normalized_y_log_likelihoods)
+        print(y_max)
 
 
 if __name__ == "__main__":
