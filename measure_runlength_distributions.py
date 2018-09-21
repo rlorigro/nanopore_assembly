@@ -4,13 +4,30 @@ from handlers.DataLoaderRunlength import DataLoader
 from handlers.FileManager import FileManager
 from collections import defaultdict
 from matplotlib import pyplot
+import datetime
 import numpy
 import sys
+import os
 
 numpy.set_printoptions(linewidth=400, threshold=100000, suppress=True, precision=3)
 
 
 FREQUENCY_THRESHOLD = 0.7
+
+
+def save_numpy_matrix(output_dir, filename, matrix):
+    array_file_extension = ".npz"
+
+    # ensure chromosomal directory exists
+    if not os.path.exists(output_dir):
+        FileManager.ensure_directory_exists(output_dir)
+
+    output_path_prefix = os.path.join(output_dir, filename)
+
+    output_path = output_path_prefix + array_file_extension
+
+    # write numpy arrays
+    numpy.savez_compressed(output_path, a=matrix)
 
 
 def convert_indices_to_float_encodings(indices):
@@ -104,8 +121,6 @@ def encode_runlength_distributions_as_matrix(runlengths, log_scale=False, normal
 
     frequencies_list = list()
 
-    print(runlengths.keys())
-
     for i in range(x_min,x_max):
         if i in runlengths:
             runlength_values = runlengths[i]
@@ -122,12 +137,9 @@ def encode_runlength_distributions_as_matrix(runlengths, log_scale=False, normal
     frequencies = numpy.concatenate(frequencies_list, axis=0)
 
     if log_scale:
-        frequencies = numpy.log10(frequencies*10 + 1)
+        frequencies = numpy.log10(frequencies + 1)
 
-    pyplot.imshow(frequencies)
-    pyplot.show()
-
-    return
+    return frequencies
 
 
 def measure_runlengths(data_loader):
@@ -144,11 +156,12 @@ def measure_runlengths(data_loader):
         x_repeat = trim_empty_rows(x_repeat[0,:,:], background_value=sequence_to_float["-"])
         y_repeat = y_repeat[0,:,:]
 
-        try:
-            runlengths = get_runlengths(x_pileup=x_pileup, x_repeat=x_repeat, y_pileup=y_pileup, y_repeat=y_repeat)
-        except IndexError:
-            print(x_pileup.shape, x_repeat.shape)
-            continue
+        x_pileup = numpy.atleast_2d(x_pileup)
+        y_pileup = numpy.atleast_2d(y_pileup)
+        x_repeat = numpy.atleast_2d(x_repeat)
+        y_repeat = numpy.atleast_2d(y_repeat)
+
+        runlengths = get_runlengths(x_pileup=x_pileup, x_repeat=x_repeat, y_pileup=y_pileup, y_repeat=y_repeat)
 
         for key in runlengths:
             runlength_values = runlengths[key]
@@ -170,7 +183,16 @@ def measure_runlengths(data_loader):
 
     plot_runlength_distributions(all_runlengths)
 
-    runlength_matrix = encode_runlength_distributions_as_matrix(all_runlengths, log_scale=False, normalize_observed=True)
+    runlength_matrix = encode_runlength_distributions_as_matrix(all_runlengths, log_scale=False, normalize_observed=False)
+
+    pyplot.imshow(runlength_matrix)
+    pyplot.show()
+
+    output_dir = "output/runlength_frequency_matrix"
+    datetime_string = '-'.join(list(map(str, datetime.datetime.now().timetuple()))[:-3])
+    filename = "runlength_probability_matrix_" + datetime_string
+
+    save_numpy_matrix(output_dir=output_dir, filename=filename, matrix=runlength_matrix)
 
 
 def run():

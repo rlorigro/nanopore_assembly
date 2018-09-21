@@ -1,6 +1,8 @@
 from handlers.FileManager import FileManager
+from modules.pileup_utils import trim_empty_rows
 from handlers.DataLoader import DataLoader
 from modules.ConsensusCaller import *
+from modules.train_test_utils import realign_consensus_to_reference
 from matplotlib import pyplot
 import torch
 
@@ -63,8 +65,8 @@ def plot_confusion(confusion_matrix):
     axes.set_ylabel("True class")
     axes.set_xlabel("Predicted class")
 
-    axes.set_xticklabels(["","-","A","T","C","G"])
-    axes.set_yticklabels(["","-","A","T","C","G"])
+    axes.set_xticklabels(["","-","A","G","T","C"])
+    axes.set_yticklabels(["","-","A","G","T","C"])
 
     for i in range(x):
         for j in range(y):
@@ -75,15 +77,16 @@ def plot_confusion(confusion_matrix):
     pyplot.show()
 
 
-def trim_empty_rows(matrix):
-    h, w = matrix.shape
-
-    sums = numpy.sum(matrix, axis=1)
-    mask = numpy.nonzero(sums)
-
-    matrix = matrix[mask,:].squeeze()
-
-    return matrix
+# def trim_empty_rows(matrix):
+#     h, w = matrix.shape
+#
+#     sums = numpy.sum(matrix, axis=1)
+#     mask = numpy.nonzero(sums)
+#
+#     matrix = matrix[mask,:]
+#     matrix = matrix.reshape([matrix.shape[1], matrix.shape[2]])
+#
+#     return matrix
 
 
 def sequential_loss_CE(y_predict, y, loss_fn):
@@ -171,8 +174,6 @@ def test(model, data_loader):
 
         confusion = batch_sequential_confusion(y_predict=y_predict, y=y)
 
-        # plot_prediction(x,y,y_predict)
-
         if total_confusion is None:
             total_confusion = confusion
         else:
@@ -184,8 +185,11 @@ def test(model, data_loader):
 
 def test_consensus(consensus_caller, data_loader):
     total_confusion = None
+    total_realigned_confusion = None
 
     for b, batch in enumerate(data_loader):
+        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/len(data_loader)))
+
         paths, x, y = batch
 
         # (n,h,w) shape
@@ -193,26 +197,59 @@ def test_consensus(consensus_caller, data_loader):
 
         for n in range(batch_size):
             x_n = x[n,:,:].data.numpy()
-            y_n = y[n,:,:]
+            y_n = y[n,:,:].data.numpy()
 
-            x_n = trim_empty_rows(x_n)
+            x_n = trim_empty_rows(x_n, background_value=sequence_to_float["-"])
 
             y_predict_n = consensus_caller.call_consensus_as_one_hot(x_n)
-            y_predict_n = torch.FloatTensor(y_predict_n)
 
+            consensus_sequence = consensus_caller.decode_one_hot_to_string(y_predict_n)
+            reference_sequence = consensus_caller.decode_one_hot_to_string(y_n)
+
+            # print(consensus_sequence)
+            # print(reference_sequence)
+
+            if consensus_sequence == '':
+                pyplot.imshow(y_predict_n)
+                pyplot.show()
+                pyplot.close()
+                pyplot.imshow(x_n)
+                pyplot.show()
+                pyplot.close()
+
+            y_predict_n = torch.FloatTensor(y_predict_n)
+            y_n = torch.FloatTensor(y_n)
             confusion = sequential_confusion(y_predict=y_predict_n, y=y_n)
 
+            # realign strings to each other and convert to one hot
+            y_pileup_predict_expanded, y_pileup_expanded = \
+                realign_consensus_to_reference(consensus_sequence=consensus_sequence,
+                                               ref_sequence=reference_sequence, print_alignment=False)
+
+            y_pileup_predict_expanded = torch.FloatTensor(y_pileup_predict_expanded)
+            y_pileup_expanded = torch.FloatTensor(y_pileup_expanded)
+            realigned_confusion = sequential_confusion(y_predict=y_pileup_predict_expanded, y=y_pileup_expanded)
+
             # normalized_frequencies = consensus_caller.call_consensus_as_normalized_frequencies(x_n)
-            #
             # plot_consensus_prediction(x=x_n,y=y_n,y_predict=normalized_frequencies)
 
             if total_confusion is None:
                 total_confusion = confusion
+                total_realigned_confusion = realigned_confusion
             else:
                 total_confusion += confusion
+                total_realigned_confusion += realigned_confusion
+
+    print()
+
+    plot_confusion(total_confusion)
+    plot_confusion(total_realigned_confusion)
 
     total_confusion = normalize_confusion_matrix(total_confusion)
+    total_realigned_confusion = normalize_confusion_matrix(total_realigned_confusion)
+
     plot_confusion(total_confusion)
+    plot_confusion(total_realigned_confusion)
 
 
 def run():
@@ -220,7 +257,9 @@ def run():
     # model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-8-29-12-11-15-2-241/model_checkpoint_21"
     # model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-8-30-11-49-32-3-242/model_checkpoint_43"
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr1_full/test"   # spoa 2 pass variants excluded
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-17-30-38-1-247"   # arbitrary 2500 window test region
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-17-30-38-1-247"   # arbitrary 2500 window test region
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_1mbp_NONRUNLENGTH_2018-9-19"   # c elegans
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_NONRUNLENGTH_2018-9-18"      # human
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
@@ -246,6 +285,8 @@ def run():
     consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
     # test(model=model, data_loader=data_loader)
+
+    print(len(data_loader))
     test_consensus(consensus_caller=consensus_caller, data_loader=data_loader)
 
 

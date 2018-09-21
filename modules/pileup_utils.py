@@ -157,6 +157,8 @@ def convert_alignments_to_matrix(alignments, fixed_coverage=True):
         for b,character in enumerate(alignment_string):
             matrix[a,b] = sequence_to_float[character]
 
+    matrix = numpy.atleast_2d(matrix)
+
     return matrix
 
 
@@ -191,5 +193,8 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_c
 
                 repeat_matrix[a,b] = character_counts[a][c]
                 c += 1
+
+    base_matrix = numpy.atleast_2d(base_matrix)
+    repeat_matrix = numpy.atleast_2d(repeat_matrix)
 
     return base_matrix, repeat_matrix

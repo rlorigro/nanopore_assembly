@@ -5,7 +5,6 @@ from modules.pileup_utils import convert_collapsed_alignments_to_matrix
 from modules.pileup_utils import convert_aligned_reference_to_one_hot
 from modules.pileup_utils import convert_alignments_to_matrix
 from modules.pileup_utils import sequence_to_index, sequence_to_float
-from modules.pileup_utils import plot_collapsed_encodings
 from matplotlib import pyplot
 import numpy
 
@@ -39,6 +38,7 @@ class ConsensusCaller:
         :return:
         """
         pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
 
         n, m = pileup_matrix.shape
 
@@ -50,6 +50,11 @@ class ConsensusCaller:
             bincount = numpy.bincount(inverse)
             mode = bincount.argmax()
             consensus_code = round(float(unique[mode]),3)
+
+            # print(column)
+            # print(unique)
+            # print(bincount)
+            # print(consensus_code)
 
             character_index = self.float_to_index[consensus_code]
 
@@ -369,7 +374,10 @@ class ConsensusCaller:
 
         return consensus_string
 
-    def decode_one_hot_to_string(self, one_hot_encoding):
+    def decode_one_hot_to_string(self, one_hot_encoding, ignore_blanks=True):
+        if type(one_hot_encoding) != numpy.ndarray:
+            exit("Incompatible data type: " + str(type(one_hot_encoding)))
+
         consensus_characters = list()
 
         n, m = one_hot_encoding.shape
@@ -377,9 +385,13 @@ class ConsensusCaller:
         indexes = numpy.argmax(one_hot_encoding, axis=0)
 
         for i in range(m):
-            # blanks coded as 0 repeats, but for comparison sake, we ant to include blanks
-            character_index = indexes[:,i]
-            consensus_characters.append(self.index_to_sequence[character_index])
+            character_index = indexes[i]
+
+            if ignore_blanks:
+                if character_index != 0:
+                    consensus_characters.append(self.index_to_sequence[character_index])
+            else:
+                consensus_characters.append(self.index_to_sequence[character_index])
 
         consensus_string = ''.join(consensus_characters)
 
