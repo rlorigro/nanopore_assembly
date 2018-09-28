@@ -161,7 +161,18 @@ def measure_runlengths(data_loader):
         x_repeat = numpy.atleast_2d(x_repeat)
         y_repeat = numpy.atleast_2d(y_repeat)
 
-        runlengths = get_runlengths(x_pileup=x_pileup, x_repeat=x_repeat, y_pileup=y_pileup, y_repeat=y_repeat)
+        try:
+            runlengths = get_runlengths(x_pileup=x_pileup, x_repeat=x_repeat, y_pileup=y_pileup, y_repeat=y_repeat)
+        except IndexError as e:
+            print()
+            print(e)
+            # pyplot.imshow(x_repeat)
+            # pyplot.show()
+            # pyplot.close()
+            # pyplot.imshow(x_pileup)
+            # pyplot.show()
+            # pyplot.close()
+            continue
 
         for key in runlengths:
             runlength_values = runlengths[key]
@@ -197,7 +208,9 @@ def measure_runlengths(data_loader):
 
 def run():
     # data_path = "/home/ryan/code/nanopore_assembly/output/celegans_chr1_1m_windows_spoa_pileup_generation_2018-9-18"    # 1 million bases in celegans chr1 scrappie
-    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_2018-9-18"             # 1 million bases in human guppy
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_2018-9-18"             # 1 million bases in human guppy
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_2-12Mbp_2018-9-21"       # 10 million bases in human guppy
+    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr5_FULL_20Mbp_2018-9-24"
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=data_path, file_extension=".npz")
 

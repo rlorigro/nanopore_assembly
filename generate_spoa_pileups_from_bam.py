@@ -1,4 +1,4 @@
-from modules.PileupGenerator import PileupGenerator
+from modules.AlignedSegmentGrabber import SegmentGrabber
 from modules.IntervalTree import IntervalTree
 from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
@@ -60,38 +60,6 @@ def get_alignments_by_sequence(alignments, sequence):
     return query_alignments
 
 
-def collapse_repeats(sequences):
-    """
-    For a list of sequences, collapse repeated characters to single characters, and generate a list of integer values
-    that describe the number of repeats for each character
-    :param sequences:
-    :return:
-    """
-    character_sequences = list()
-    character_counts = list()
-
-    for sequence in sequences:
-        character_sequence = list()
-        character_count = list()
-        current_character = None
-
-        for character in sequence:
-            if character != current_character:
-                character_sequence.append(character)
-                character_count.append(1)
-            else:
-                character_count[-1] += 1
-
-            current_character = character
-
-        character_sequence = ''.join(character_sequence)
-
-        character_sequences.append(character_sequence)
-        character_counts.append(character_count)
-
-    return character_sequences, character_counts
-
-
 def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_start, pileup_end, include_ref=False):
     """
     Get read segments from a pair of coordinates given that each read has an aligned match at the start and end
@@ -111,11 +79,11 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                   start=pileup_start,
                                   stop=pileup_end)
 
-    pileup_generator = PileupGenerator(chromosome_name=chromosome_name,
-                                       start_position=pileup_start,
-                                       end_position=pileup_end,
-                                       ref_sequence=ref_sequence,
-                                       reads=reads)
+    pileup_generator = SegmentGrabber(chromosome_name=chromosome_name,
+                                      start_position=pileup_start,
+                                      end_position=pileup_end,
+                                      ref_sequence=ref_sequence,
+                                      reads=reads)
 
     # if a reference sequence is intended to be added to the pileup, then leave a space for it
     if include_ref:
@@ -490,16 +458,20 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
 
     sequences, repeats = collapse_repeats(sequences)
     ref_sequence, ref_repeats = collapse_repeats([ref_sequence])
-
     ref_sequence = ref_sequence[0]
 
     alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
-    ref_alignment = [ref_alignment]
 
-    pileup_matrix, pileup_repeat_matrix = convert_collapsed_alignments_to_matrix(alignments, repeats)
-    reference_matrix, reference_repeat_matrix = convert_collapsed_alignments_to_matrix(ref_alignment, ref_repeats, fixed_coverage=False)
+    pileup_matrix, pileup_repeat_matrix = convert_collapsed_alignments_to_one_hot_tensor(alignments,
+                                                                                         repeats,
+                                                                                         fixed_coverage=False)
 
-    reference_one_hot = convert_aligned_reference_to_one_hot(reference_alignment=ref_alignment)
+    reference_matrix, reference_repeat_matrix = convert_collapsed_alignments_to_one_hot_tensor(ref_alignment,
+                                                                                               ref_repeats,
+                                                                                               fixed_coverage=False)
+
+    # plot_one_hot_tensor(pileup_matrix)
+    # plot_one_hot_tensor(reference_matrix)
 
     if plot_results:
         plot_collapsed_encodings(pileup_matrix=pileup_matrix,
@@ -510,16 +482,16 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
     if print_results:
         print_segments(ref_sequence, sequences)
 
-        for label, alignstring in alignments:
-            print("{0:15s} {1:s}".format(label, alignstring))
+        for a, alignstring in enumerate(alignments):
+            print("{0:15s} {1:s}".format(str(a), alignstring))
 
-        for label, alignstring in ref_alignment:
-            print("{0:15s} {1:s}".format(label, alignstring))
+        for alignstring in ref_alignment:
+            print("{0:15s} {1:s}".format("ref", alignstring))
 
-        print(repeats)
-        print(ref_repeats)
+        # print(repeats)
+        # print(ref_repeats)
 
-    if ref_alignment[0][1].replace("-",'') != ref_sequence:
+    if ref_alignment[0].replace("-",'') != ref_sequence:
         print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
         print("unaligned:\t",ref_sequence)
         print("aligned:\t",ref_alignment[0][1].replace("-",''))
@@ -527,7 +499,7 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
     elif save_data:
         save_run_length_training_data(output_dir=output_dir,
                                       pileup_matrix=pileup_matrix,
-                                      reference_matrix=reference_one_hot,
+                                      reference_matrix=reference_matrix,
                                       pileup_repeat_matrix=pileup_repeat_matrix,
                                       reference_repeat_matrix=reference_repeat_matrix,
                                       chromosome_name=chromosome_name,
@@ -643,9 +615,12 @@ def main():
     fasta_handler = FastaHandler(reference_file_path)
     contig_names = fasta_handler.get_contig_names()
 
-    chromosome_name = "NC_003279.8"
+    # chromosome_name = "NC_003279.8"     # celegans chr1
+    chromosome_name = "NC_003283.11"     # celegans chr5
     # chromosome_name = "1"
     # chromosome_name = "chr" + chromosome_name
+
+    chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
 
     # ---- TEST window --------------------------------------------------------
 
@@ -659,11 +634,6 @@ def main():
     # window = [246567, 246587]     # previously failing test case for collapsed reads
     # window = [800000, 800020]
 
-    # FIX THIS BUG:
-    # [0.6 0.4 0.6 0.4]
-    # ERROR: incorrect dimensions for pileup:
-    #     / home / ryan / code / nanopore_assembly / output / spoa_pileup_generation_2018 - 9 - 6 - 13 - 16 - 52 - 3 - 249 / chr1 / chr1_1007747_matrix.npz
-
     # test_window(bam_file_path=bam_file_path,
     #             reference_file_path=reference_file_path,
     #             chromosome_name=chromosome_name,
@@ -672,18 +642,19 @@ def main():
     #             print_results=True,
     #             save_data=True)
 
-    # test_window_run_length_encoding(bam_file_path=bam_file_path,
-    #                                 reference_file_path=reference_file_path,
-    #                                 chromosome_name=chromosome_name,
-    #                                 window=window,
-    #                                 output_dir=output_dir,
-    #                                 print_results=True,
-    #                                 save_data=True)
+    # generate_window_run_length_encoding(bam_file_path=bam_file_path,
+    #                                     reference_file_path=reference_file_path,
+    #                                     chromosome_name=chromosome_name,
+    #                                     window=window,
+    #                                     output_dir=output_dir,
+    #                                     print_results=True,
+    #                                     save_data=True)
 
     # ---- TEST region --------------------------------------------------------
 
-    region = [800000, 1800000]
-    runlength = False
+    region = [2000000, 12000000]
+    # region = [0, chromosome_length]
+    runlength = True
 
     encode_region_parallel(bam_file_path=bam_file_path,
                            reference_file_path=reference_file_path,

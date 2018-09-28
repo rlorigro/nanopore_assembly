@@ -5,6 +5,7 @@ from modules.pileup_utils import convert_collapsed_alignments_to_matrix
 from modules.pileup_utils import convert_aligned_reference_to_one_hot
 from modules.pileup_utils import convert_alignments_to_matrix
 from modules.pileup_utils import sequence_to_index, sequence_to_float
+from models.BaseRunlengthClassifier import RunlengthClassifier, MATRIX_PATH
 from matplotlib import pyplot
 import numpy
 
@@ -13,6 +14,8 @@ class ConsensusCaller:
     def __init__(self, sequence_to_index, sequence_to_float):
         self.index_to_sequence = self.get_inverse_dictionary(sequence_to_index)
         self.float_to_index = self.get_float_to_index(sequence_to_float, sequence_to_index)
+
+        self.runlength_classifier = None
 
     def get_inverse_dictionary(self, a):
         inverse = dict()
@@ -70,6 +73,7 @@ class ConsensusCaller:
         :return:
         """
         pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
 
         n, m = pileup_matrix.shape
 
@@ -97,6 +101,7 @@ class ConsensusCaller:
         :return:
         """
         pileup_matrix = pileup_matrix.round(3)
+        pileup_matrix = numpy.atleast_2d(pileup_matrix)
 
         try:
             n, m = pileup_matrix.shape
@@ -253,13 +258,17 @@ class ConsensusCaller:
 
         return mode
 
-    def call_repeat_consensus_as_integer_vector(self, repeat_matrix, pileup_matrix, consensus_encoding):
+    def call_repeat_consensus_as_integer_vector(self, repeat_matrix, pileup_matrix, consensus_encoding, use_model=False, use_prior=False):
         """
         For a repeat matrix which encodes the number of repeats for each character in a pileup of aligned sequences,
         determine the consensus number of repeats for each column.
         :param repeat_matrix:
         :return:
         """
+        if use_model:
+            if self.runlength_classifier is None:
+                self.runlength_classifier = RunlengthClassifier(path=MATRIX_PATH, log_scale=True)
+
         pileup_matrix = pileup_matrix.round(3)
         pileup_matrix = numpy.atleast_2d(pileup_matrix)
 
@@ -281,9 +290,12 @@ class ConsensusCaller:
 
             repeats = repeat_column[mask]
 
-            # exit()
+            if use_model:
+                normalized_y_log_likelihoods, column_repeat_consensus = \
+                    self.runlength_classifier.predict(x=repeats, base_encoding=pileup_column_consensus)
+            else:
+                column_repeat_consensus = self.mode(repeats)
 
-            column_repeat_consensus = self.mode(repeats)
             repeat_consensus[0,column_index] = column_repeat_consensus
 
         repeat_consensus = numpy.round(repeat_consensus)

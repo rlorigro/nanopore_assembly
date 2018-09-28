@@ -7,6 +7,38 @@ MISMATCH_SCORE = -2
 GAP_SCORE = -1
 
 
+def collapse_repeats(sequences):
+    """
+    For a list of sequences, collapse repeated characters to single characters, and generate a list of integer values
+    that describe the number of repeats for each character
+    :param sequences:
+    :return:
+    """
+    character_sequences = list()
+    character_counts = list()
+
+    for sequence in sequences:
+        character_sequence = list()
+        character_count = list()
+        current_character = None
+
+        for character in sequence:
+            if character != current_character:
+                character_sequence.append(character)
+                character_count.append(1)
+            else:
+                character_count[-1] += 1
+
+            current_character = character
+
+        character_sequence = ''.join(character_sequence)
+
+        character_sequences.append(character_sequence)
+        character_counts.append(character_count)
+
+    return character_sequences, character_counts
+
+
 def call_commandline_spoa(space_separated_sequences, ref_sequence, two_pass=True):
     match_arg = str(MATCH_SCORE)
     mismatch_arg = str(MISMATCH_SCORE)
@@ -85,17 +117,17 @@ def get_spoa_alignment(sequences, ref_sequence, two_pass=True):
 
     read_alignment_strings, ref_alignment_string = call_commandline_spoa(space_separated_sequences, ref_sequence, two_pass=two_pass)
 
-    alignments = list()
-    for a, alignment_string in enumerate(read_alignment_strings):
-        label = str(a)
-        alignment = [label, alignment_string]
+    # alignments = list()
+    # for a, alignment_string in enumerate(read_alignment_strings):
+    #     label = str(a)
+    #     alignment = [label, alignment_string]
+    #
+    #     alignments.append(alignment)
 
-        alignments.append(alignment)
+    # ref_label = "ref"
+    ref_alignment_strings = [ref_alignment_string]
 
-    ref_label = "ref"
-    ref_alignment = [ref_label, ref_alignment_string]
-
-    return alignments, ref_alignment
+    return read_alignment_strings, ref_alignment_strings
 
 
 def get_spoa_alignment_no_ref(sequences, two_pass=True):
@@ -103,12 +135,12 @@ def get_spoa_alignment_no_ref(sequences, two_pass=True):
 
     read_alignment_strings = call_commandline_spoa_no_ref(space_separated_sequences, two_pass=two_pass)
 
-    alignments = list()
-    for a, alignment_string in enumerate(read_alignment_strings):
-        label = str(a)
-        alignment = [label, alignment_string]
+    # alignments = list()
+    # for a, alignment_string in enumerate(read_alignment_strings):
+    #     label = str(a)
+    #     alignment = [label, alignment_string]
+    #
+    #     alignments.append(alignment)
 
-        alignments.append(alignment)
-
-    return alignments
+    return read_alignment_strings
 

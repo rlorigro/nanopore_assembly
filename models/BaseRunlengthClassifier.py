@@ -1,11 +1,14 @@
+import sys
+import os
+sys.path.append(os.path.dirname(sys.path[0]))
 from matplotlib import pyplot
 import numpy
-import sys
+from modules.pileup_utils import sequence_to_index, float_to_index, sequence_to_float
 from scipy.misc import logsumexp
 
 numpy.set_printoptions(precision=3, linewidth=400, suppress=True)
 
-MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"
+MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-9-25-13-42-30.npz"
 
 
 class RunlengthClassifier:
@@ -18,20 +21,14 @@ class RunlengthClassifier:
     def __init__(self, path, log_scale=True):
         self.log_scale = log_scale
 
-        self.frequency_matrix = self.load_frequency_matrix(path)    # redundant storage for troubleshooting
-        self.probability_matrix = self.normalize_frequency_matrix(self.frequency_matrix, log_scale=log_scale)
-        self.prior_vector = self.get_prior_vector(self.frequency_matrix, log_scale=log_scale)
+        self.base_frequency_matrices = self.load_base_frequency_matrices(path)    # redundant storage to troubleshoot
+        self.probability_matrices = self.normalize_frequency_matrices(self.base_frequency_matrices, log_scale=log_scale)
+        # self.prior_vectors = self.get_prior_vector(base_frequency_matrices, log_scale=log_scale)
 
-        # self.plot_matrix(self.probability_matrix)
+        self.y_maxes = [matrix.shape[0] for matrix in self.probability_matrices]
+        self.x_maxes = [matrix.shape[1] for matrix in self.probability_matrices]
 
-        self.y_max = self.probability_matrix.shape[0]
-        self.x_max = self.probability_matrix.shape[1]
-
-    def load_frequency_matrix(self, path):
-        matrix = numpy.load(MATRIX_PATH)['a']
-        matrix = matrix[1:, 1:]  # trim 0 columns (for now)
-
-        return matrix
+        self.float_to_index = float_to_index
 
     def plot_matrix(self, probability_matrix):
         axes = pyplot.axes()
@@ -41,23 +38,30 @@ class RunlengthClassifier:
         pyplot.show()
         pyplot.close()
 
-    def get_prior_vector(self, frequency_matrix, log_scale):
-        sum_y = numpy.sum(frequency_matrix, axis=1)
-        sum_total = numpy.sum(sum_y)
+    def load_base_frequency_matrices(self, path):
+        matrix_labels = ["a", "g", "t", "c"]
+        base_frequency_matrices = [None for base in matrix_labels]
 
-        if log_scale:
-            sum_y = numpy.log10(sum_y)
-            sum_total = numpy.log10(sum_total)
-            priors = sum_y - sum_total
+        for base in matrix_labels:
+            matrix = numpy.load(path)[base]
+            matrix = matrix[1:, 1:]  # trim 0 columns (for now)
 
-        else:
-            priors = sum_y / sum_total
+            base_index = sequence_to_index[base.upper()] - 1
+            base_frequency_matrices[base_index] = matrix
 
-        l = priors.shape[0]
+        return base_frequency_matrices
 
-        priors = priors.reshape([l,1])
+    def normalize_frequency_matrices(self, frequency_matrices, log_scale):
+        normalized_frequency_matrices = list()
 
-        return priors
+        for frequency_matrix in frequency_matrices:
+            normalized_frequencies = self.normalize_frequency_matrix(frequency_matrix=frequency_matrix,
+                                                                     log_scale=log_scale)
+            normalized_frequency_matrices.append(normalized_frequencies)
+
+            # self.plot_matrix(normalized_frequencies)
+
+        return normalized_frequency_matrices
 
     def normalize_frequency_matrix(self, frequency_matrix, log_scale):
         """
@@ -113,15 +117,21 @@ class RunlengthClassifier:
 
         return unique, bincount
 
-    def apply_prior(self, y):
-        if self.log_scale:
-            y = y + self.prior_vector
-        else:
-            y = y*self.prior_vector
+    # def apply_prior(self, y):
+    #     if self.log_scale:
+    #         y = y + self.prior_vector
+    #     else:
+    #         y = y*self.prior_vector
+    #
+    #     return y
 
-        return y
+    def get_base_index_from_encoding(self, float_value):
+        float_value = round(float(float_value), 3)
+        base_index = self.float_to_index[float_value] - 1   # no deletes allowed
 
-    def predict(self, x, use_prior=False):
+        return base_index
+
+    def predict(self, base_encoding, x):
         """
         for a vector of observations x, find the product of likelihoods p(x_i|y_j) for x_i in x, for all possible Y
         values, and return the maximum value
@@ -130,9 +140,12 @@ class RunlengthClassifier:
         """
         x, counts = self.factor_repeats(x)  # factor the repeats to avoid iterating probability lookups multiple times
 
-        log_likelihood_y = numpy.zeros([self.y_max, 1])
+        base_float_value = base_encoding
+        base_index = self.get_base_index_from_encoding(float_value=base_float_value)
 
-        for y_j in range(0, self.y_max):
+        log_likelihood_y = numpy.zeros([self.y_maxes[base_index], 1])
+
+        for y_j in range(0, self.y_maxes[base_index]):
             # initialize log likelihood for this (jth) y value
             log_sum = 0
 
@@ -145,30 +158,24 @@ class RunlengthClassifier:
                 x_i = int(x_i)
                 y_j = int(y_j)
 
-                if x_i > self.x_max:
-                    x_i = self.x_max
+                if x_i > self.x_maxes[base_index]:
+                    x_i = self.x_maxes[base_index]
 
                 # retrieve conditional probability for this x|y
-                prob_x_i_given_y_j = self.probability_matrix[y_j - 1, x_i - 1]  # index adjusted to account for no zeros
+                prob_x_i_given_y_j = self.probability_matrices[base_index][y_j - 1, x_i - 1]  # index adjusted to account for no zeros
 
                 # exponentiate by the number of independently observed repeats of this value
                 log_sum += c_i*float(prob_x_i_given_y_j)
 
-            # if the frequency matrix has empty rows, consider p(y_j) to be 0
-            if numpy.isnan(log_sum):
+            if numpy.isnan(log_sum):    # if the frequency matrix has empty rows, consider p(y_j) to be 0
                 log_sum = -numpy.inf
 
             # store result of log sum of likelihoods
             log_likelihood_y[y_j,0] = log_sum
 
-        if use_prior:
-            posterior = self.apply_prior(log_likelihood_y)
-        else:
-            posterior = log_likelihood_y
+        j_max = numpy.argmax(log_likelihood_y)
 
-        j_max = numpy.argmax(posterior)
-
-        normalized_posterior = self.normalize_likelihoods(log_likelihood_y=posterior, max_index=j_max)
+        normalized_posterior = self.normalize_likelihoods(log_likelihood_y=log_likelihood_y, max_index=j_max)
 
         return normalized_posterior, j_max
 
@@ -178,20 +185,19 @@ class RunlengthClassifier:
 
 
 def test():
-
-    runlength_classifier = RunlengthClassifier(matrix)
+    runlength_classifier = RunlengthClassifier(MATRIX_PATH)
 
     while True:
-        sys.stdout.write("Enter space-separated repeat observations: \n")
+        sys.stdout.write("Enter character: \n")
+        input_string = sys.stdin.readline().strip().upper()
+        base_encoding = sequence_to_float[input_string]
 
+        sys.stdout.write("Enter space-separated repeat observations: \n")
         input_string = sys.stdin.readline()
         x = input_string.strip().split(" ")
         x = numpy.array(list(map(int, x)))
 
-        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x,use_prior=False)
-        runlength_classifier.print_normalized_likelihoods(10**normalized_y_log_likelihoods)
-
-        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x,use_prior=True)
+        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x=x, base_encoding=base_encoding)
         runlength_classifier.print_normalized_likelihoods(10**normalized_y_log_likelihoods)
 
         print("\nMost likely runlength: ", y_max)

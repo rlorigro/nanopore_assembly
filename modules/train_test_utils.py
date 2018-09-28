@@ -9,6 +9,22 @@ import os
 sys.path.append(os.path.dirname(sys.path[0]))
 
 
+def calculate_accuracy_from_confusion(matrix, exclude_gaps=False):
+    if exclude_gaps:
+        matrix = matrix[1:,1:]
+
+    n, m = matrix.shape
+    diagonal_mask = numpy.eye(n,m, dtype=numpy.bool)
+    off_diagonal_mask = numpy.invert(diagonal_mask)
+
+    true_postives = numpy.sum(matrix[diagonal_mask])
+    false_positives = numpy.sum(matrix[off_diagonal_mask])
+
+    accuracy = true_postives / (true_postives + false_positives)
+
+    return accuracy
+
+
 def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_alignment=False):
     alignments, ref_alignment = get_spoa_alignment(sequences=[consensus_sequence], ref_sequence=ref_sequence, two_pass=False)
     ref_alignment = [ref_alignment]

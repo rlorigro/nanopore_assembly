@@ -1,4 +1,4 @@
-from modules.PileupGenerator import PileupGenerator
+from modules.AlignedSegmentGrabber import SegmentGrabber
 from modules.IntervalTree import IntervalTree
 from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
@@ -95,12 +95,12 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                   start=pileup_start,
                                   stop=pileup_end)
 
-    pileup_generator = PileupGenerator(chromosome_name=chromosome_name,
-                                       start_position=pileup_start,
-                                       end_position=pileup_end,
-                                       ref_sequence=ref_sequence,
-                                       reads=reads,
-                                       max_coverage=MAX_COVERAGE)
+    pileup_generator = SegmentGrabber(chromosome_name=chromosome_name,
+                                      start_position=pileup_start,
+                                      end_position=pileup_end,
+                                      ref_sequence=ref_sequence,
+                                      reads=reads,
+                                      max_coverage=MAX_COVERAGE)
 
     sequence_dictionary = pileup_generator.get_read_segments()
 

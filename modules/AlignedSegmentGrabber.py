@@ -4,15 +4,17 @@ from collections import defaultdict
 
 
 MAX_COVERAGE = 50
+SEQUENCE_LENGTH_CUTOFF_FACTOR = 3   # exclude aligned segments that exceed window_size by this multiple
 DEFAULT_MIN_MAP_QUALITY = 5
 
 
-class PileupGenerator:
+class SegmentGrabber:
     def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
         # candidate finder includes end position, so should the reference sequence
         self.chromosome_name = chromosome_name
         self.start_position = start_position
         self.end_position = end_position
+        self.window_size = end_position - start_position
         self.ref_sequence = ref_sequence
         self.max_coverage = MAX_COVERAGE
 
@@ -106,7 +108,9 @@ class PileupGenerator:
                 # to simulate Paolo Carnevali's data, all reads should span the full region, match on start and end pos.
                 if segment_alignment_start == self.start_position and segment_alignment_end == self.end_position:
                     sequence = read_sequence[start_index:end_index + 1]
-                    self.sequences[read_id] = sequence
+
+                    if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR*self.window_size:
+                        self.sequences[read_id] = sequence
 
                 # else:
                 #     print("incomplete read segment")

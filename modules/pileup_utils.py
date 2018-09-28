@@ -1,10 +1,10 @@
-from handlers.FileManager import FileManager
-from modules.PileupGenerator import MAX_COVERAGE
-from matplotlib import pyplot
-import numpy
 import sys
 import os
 sys.path.append(os.path.dirname(sys.path[0]))
+from handlers.FileManager import FileManager
+from modules.AlignedSegmentGrabber import MAX_COVERAGE
+from matplotlib import pyplot
+import numpy
 
 
 sequence_to_float = {"-":0.02,
@@ -19,7 +19,14 @@ sequence_to_index = {"-":0,
                      "T":3,
                      "C":4}
 
+A,G,T,C = 1,2,3,4
+
 index_to_float = [0.02, 0.2, 0.4, 0.6, 0.8]
+
+index_to_sequence = ["-", "A", "G", "T", "C"]
+
+float_to_index = {0.02:0, 0.2:1, 0.4:2, 0.6:3, 0.8:4}
+
 
 def visualize_matrix(matrix):
     pyplot.imshow(matrix, cmap="viridis")
@@ -162,6 +169,37 @@ def convert_alignments_to_matrix(alignments, fixed_coverage=True):
     return matrix
 
 
+def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_coverage=True, numpy_type=numpy.float64):
+    if fixed_coverage:
+        n = MAX_COVERAGE
+    else:
+        n = len(alignments)
+    m = len(alignments[0])
+    c = len(index_to_sequence)
+
+    base_matrix = numpy.zeros([c,n,m], dtype=numpy_type)
+    repeat_matrix = numpy.zeros([1,n,m])
+
+    for n_index,alignment in enumerate(alignments):
+        repeat_index = 0
+
+        for m_index,character in enumerate(alignment):
+            c_index = sequence_to_index[character]
+            base_matrix[c_index,n_index,m_index] = 1
+
+            if character != "-":
+                repeat_matrix[0,n_index,m_index] = repeats[n_index][repeat_index]
+                repeat_index += 1
+
+    if base_matrix.ndim < 3:
+        base_matrix = base_matrix.reshape([c,n,m])
+
+    if repeat_matrix.ndim < 3:
+        repeat_matrix = repeat_matrix.reshape([1,n,m])
+
+    return base_matrix, repeat_matrix
+
+
 def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_coverage=True, numpy_type=numpy.float64):
     """
     For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1
@@ -172,25 +210,18 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_c
         n = MAX_COVERAGE
     else:
         n = len(alignments)
-    m = len(alignments[0][1])
+    m = len(alignments[0])
 
     base_matrix = numpy.zeros([n, m], dtype=numpy_type) + sequence_to_float["-"]
     repeat_matrix = numpy.zeros([n,m])
 
     for a,alignment in enumerate(alignments):
         c = 0
-        read_id, alignment_string = alignment
 
-        for b,character in enumerate(alignment_string):
+        for b,character in enumerate(alignment):
             base_matrix[a,b] = sequence_to_float[character]
 
             if character != "-":
-                # print("a", a, "c", c, "len c", len(character_counts[a]), alignment[1], character_counts[a][c], character_counts[a])
-
-                # print(a, c)
-                # print(alignment_string.replace("-",''))
-                # print(''.join(map(str,character_counts[a])))
-
                 repeat_matrix[a,b] = character_counts[a][c]
                 c += 1
 
@@ -198,3 +229,67 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_c
     repeat_matrix = numpy.atleast_2d(repeat_matrix)
 
     return base_matrix, repeat_matrix
+
+
+def plot_one_hot_tensor(tensor):
+    scale = numpy.arange(0,1.0,1/5)
+    scaled_tensor = tensor*scale[:,numpy.newaxis,numpy.newaxis]
+
+    flattened_tensor = numpy.sum(scaled_tensor,axis=0)
+
+    # print(numpy.sum(tensor, axis=0))
+
+    pyplot.imshow(flattened_tensor)
+    pyplot.show()
+    pyplot.close()
+
+
+def test():
+    test_sequences = ["AGGTTTCCCC",
+                      "GGTTTCCCC",
+                      "ATTTCCCC",
+                      "AGGCCCC",
+                      "AGGTTT"]
+
+    sequences, repeats = collapse_repeats(test_sequences)
+    alignments = get_spoa_alignment_no_ref(sequences)
+    print(alignments)
+    print(sequences)
+    print(repeats)
+
+    base_matrix, repeat_matrix = convert_collapsed_alignments_to_matrix(alignments=alignments,
+                                                                        character_counts=repeats,
+                                                                        fixed_coverage=False)
+
+    print(base_matrix)
+    print(repeat_matrix)
+
+    test_alignments = ["AGTC",
+                       "-GTC",
+                       "A-TC",
+                       "AG-C",
+                       "AGT-"]
+
+    test_repeats = [[1,2,3,4],
+                    [2,3,4],
+                    [1,3,4],
+                    [1,2,4],
+                    [1,2,3]]
+
+    base_tensor, repeat_tensor = convert_collapsed_alignments_to_one_hot_tensor(alignments=test_alignments,
+                                                                                repeats=test_repeats,
+                                                                                fixed_coverage=False)
+
+    print(base_tensor.shape, repeat_tensor.shape)
+    print(repeat_tensor.squeeze())
+
+    plot_one_hot_tensor(base_tensor)
+
+    pyplot.imshow(repeat_tensor.squeeze())
+    pyplot.show()
+    pyplot.close()
+
+
+if __name__ == "__main__":
+    from modules.alignment_utils import get_spoa_alignment_no_ref, collapse_repeats
+    test()
