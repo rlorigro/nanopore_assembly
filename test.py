@@ -258,8 +258,8 @@ def run():
     # model_state_path = "/home/ryan/code/nanopore_assembly/output/training_2018-8-30-11-49-32-3-242/model_checkpoint_43"
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr1_full/test"   # spoa 2 pass variants excluded
     # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-17-30-38-1-247"   # arbitrary 2500 window test region
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_1mbp_NONRUNLENGTH_2018-9-19"   # c elegans
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_NONRUNLENGTH_2018-9-18"      # human
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_1mbp_NONRUNLENGTH_2018-9-19"   # c elegans
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_NONRUNLENGTH_2018-9-18"      # human
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 

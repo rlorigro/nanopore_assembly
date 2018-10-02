@@ -11,6 +11,7 @@ import multiprocessing
 from matplotlib import pyplot
 from datetime import datetime
 from tqdm import tqdm
+import pickle
 import math
 import os.path
 
@@ -320,6 +321,19 @@ def get_non_variant_windows(vcf_path, bed_path, chromosome_name, start_position,
     return filtered_windows
 
 
+def load_windows(path):
+    window_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
+    windows = list()
+
+    for window_path in window_paths:
+        with open(window_path, 'rb') as pickle_file:
+            window_list = pickle.load(pickle_file)
+
+            windows.extend(window_list)
+
+    return windows
+
+
 def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, output_dir, generate_from_vcf=False, runlength=False):
     """
     Generate pileups from BAM data, and collapse sequences to have no explicitly repeated characters. Additionally
@@ -470,9 +484,6 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
                                                                                                ref_repeats,
                                                                                                fixed_coverage=False)
 
-    # plot_one_hot_tensor(pileup_matrix)
-    # plot_one_hot_tensor(reference_matrix)
-
     if plot_results:
         plot_collapsed_encodings(pileup_matrix=pileup_matrix,
                                  reference_matrix=reference_matrix,
@@ -487,9 +498,6 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
 
         for alignstring in ref_alignment:
             print("{0:15s} {1:s}".format("ref", alignstring))
-
-        # print(repeats)
-        # print(ref_repeats)
 
     if ref_alignment[0].replace("-",'') != ref_sequence:
         print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
@@ -530,14 +538,17 @@ def encode_region(bam_file_path, reference_file_path, chromosome_name, region, w
                                      output_dir=output_dir)
 
 
-def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir, max_threads=1, runlength=False):
+def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir, max_threads=1, runlength=False, windows_path=None):
     length = region[1] - region[0]
-    windows = chunk_interval(interval=region, chunk_size=window_size, length=length)
+
+    if windows_path is None:
+        windows = chunk_interval(interval=region, chunk_size=window_size, length=length)
+    else:
+        windows = load_windows(windows_path)
 
     save_data = True
     print_results = False
     plot_results = False
-    counter = None
     n_chunks = len(windows)
 
     manager = multiprocessing.Manager()
@@ -609,7 +620,7 @@ def main():
     # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
     bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
     reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
-
+    windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
     # -------------------------------------------------------------------------
 
     fasta_handler = FastaHandler(reference_file_path)
@@ -663,7 +674,8 @@ def main():
                            window_size=20,
                            output_dir=output_dir,
                            runlength=runlength,
-                           max_threads=30)
+                           max_threads=30,
+                           windows_path=windows_path)
 
     # ---- COMPARE runlength vs standard encoding for region ------------------
 

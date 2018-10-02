@@ -17,24 +17,24 @@ def calculate_accuracy_from_confusion(matrix, exclude_gaps=False):
     diagonal_mask = numpy.eye(n,m, dtype=numpy.bool)
     off_diagonal_mask = numpy.invert(diagonal_mask)
 
-    true_postives = numpy.sum(matrix[diagonal_mask])
+    true_positives = numpy.sum(matrix[diagonal_mask])
     false_positives = numpy.sum(matrix[off_diagonal_mask])
 
-    accuracy = true_postives / (true_postives + false_positives)
+    accuracy = true_positives / (true_positives + false_positives)
 
     return accuracy
 
 
 def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_alignment=False):
     alignments, ref_alignment = get_spoa_alignment(sequences=[consensus_sequence], ref_sequence=ref_sequence, two_pass=False)
-    ref_alignment = [ref_alignment]
+    # ref_alignment = [ref_alignment]
 
     if print_alignment:
-        print(alignments[0][1])
-        print(ref_alignment[0][1])
+        print(alignments[0])
+        print(ref_alignment[0])
 
-    pileup_matrix = convert_aligned_reference_to_one_hot(alignments)
-    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
+    pileup_matrix = convert_aligned_reference_to_one_hot(alignments[0])
+    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment[0])
 
     return pileup_matrix, reference_matrix
 
@@ -52,9 +52,13 @@ def label_pileup_encoding_plot(matrix, axis):
 
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
-            value = matrix[i,j]
+            value = numpy.round(matrix[i,j],3)
 
-            index = consensus_caller.float_to_index[value]
+            if value == 0:
+                index = 0
+            else:
+                index = consensus_caller.float_to_index[value]
+
             character = consensus_caller.index_to_sequence[index]
 
             axis.text(j,i,character, ha="center", va="center", fontsize=6)
@@ -70,7 +74,7 @@ def label_repeat_encoding_plot(matrix, axis):
             axis.text(j,i,str(int(value)), ha="center", va="center", fontsize=6)
 
 
-def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=None, title=""):
+def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=None, title="", squeeze=False):
     if type(x_pileup) == torch.Tensor:
         x_pileup = x_pileup.data.numpy()
 
@@ -83,14 +87,19 @@ def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=
     if type(y_repeat) == torch.Tensor:
         y_repeat = y_repeat.data.numpy()
 
-    x_pileup = x_pileup[:,:].squeeze()
-    x_repeat = x_repeat[:,:].squeeze()
-    # y_pileup = y_pileup[:,:].squeeze()
-    # y_repeat = y_repeat[:,:].squeeze()
+    x_pileup = x_pileup[:, :]
+    x_repeat = x_repeat[:, :]
+
+    if squeeze:
+        x_pileup .squeeze()
+        x_repeat .squeeze()
+
+    print()
 
     print(x_pileup.shape)
     print(y_pileup.shape)
     print(x_repeat.shape)
+    print(y_repeat.shape)
 
     x_pileup_ratio = x_pileup.shape[-2]/y_pileup.shape[-2]
     y_pileup_ratio = 1
@@ -127,7 +136,7 @@ def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=
         pyplot.close()
 
 
-def plot_prediction(x, y, y_predict, save_path=None, title=""):
+def plot_prediction(x, y, y_predict, save_path=None, title="", squeeze=False):
     if type(x) == torch.Tensor:
         x = x.data.numpy()
 
@@ -137,9 +146,14 @@ def plot_prediction(x, y, y_predict, save_path=None, title=""):
     if type(y_predict) == torch.Tensor:
         y_predict = y_predict.data.numpy()
 
-    x_data = x[:,:].squeeze()
-    y_target_data = y[:,:].squeeze()
-    y_predict_data = y_predict[:,:].squeeze()
+    if squeeze:
+        x_data = x[:,:].squeeze()
+        y_target_data = y[:,:].squeeze()
+        y_predict_data = y_predict[:,:].squeeze()
+    else:
+        x_data = x
+        y_target_data = y
+        y_predict_data = y_predict
 
     x_ratio = x.shape[-2]/y_predict.shape[-2]
     y_ratio = y.shape[-2]/y_predict.shape[-2]

@@ -22,7 +22,9 @@ class RunlengthClassifier:
         self.log_scale = log_scale
 
         self.base_frequency_matrices = self.load_base_frequency_matrices(path)    # redundant storage to troubleshoot
-        self.probability_matrices = self.normalize_frequency_matrices(self.base_frequency_matrices, log_scale=log_scale)
+        self.probability_matrices = self.normalize_frequency_matrices(self.base_frequency_matrices,
+                                                                      log_scale=log_scale,
+                                                                      pseudocount=0)
         # self.prior_vectors = self.get_prior_vector(base_frequency_matrices, log_scale=log_scale)
 
         self.y_maxes = [matrix.shape[0] for matrix in self.probability_matrices]
@@ -51,10 +53,11 @@ class RunlengthClassifier:
 
         return base_frequency_matrices
 
-    def normalize_frequency_matrices(self, frequency_matrices, log_scale):
+    def normalize_frequency_matrices(self, frequency_matrices, log_scale, pseudocount=0):
         normalized_frequency_matrices = list()
 
         for frequency_matrix in frequency_matrices:
+            frequency_matrix += pseudocount
             normalized_frequencies = self.normalize_frequency_matrix(frequency_matrix=frequency_matrix,
                                                                      log_scale=log_scale)
             normalized_frequency_matrices.append(normalized_frequencies)
@@ -131,7 +134,7 @@ class RunlengthClassifier:
 
         return base_index
 
-    def predict(self, base_encoding, x):
+    def predict(self, character_index, x, skip_zeros=False):
         """
         for a vector of observations x, find the product of likelihoods p(x_i|y_j) for x_i in x, for all possible Y
         values, and return the maximum value
@@ -140,12 +143,9 @@ class RunlengthClassifier:
         """
         x, counts = self.factor_repeats(x)  # factor the repeats to avoid iterating probability lookups multiple times
 
-        base_float_value = base_encoding
-        base_index = self.get_base_index_from_encoding(float_value=base_float_value)
+        log_likelihood_y = numpy.zeros([self.y_maxes[character_index], 1])
 
-        log_likelihood_y = numpy.zeros([self.y_maxes[base_index], 1])
-
-        for y_j in range(0, self.y_maxes[base_index]):
+        for y_j in range(0, self.y_maxes[character_index]):
             # initialize log likelihood for this (jth) y value
             log_sum = 0
 
@@ -158,11 +158,17 @@ class RunlengthClassifier:
                 x_i = int(x_i)
                 y_j = int(y_j)
 
-                if x_i > self.x_maxes[base_index]:
-                    x_i = self.x_maxes[base_index]
+                if skip_zeros:
+                    if x_i == 0:
+                        continue
+
+                if x_i >= self.x_maxes[character_index]:
+                    x_i = self.x_maxes[character_index] - 1
 
                 # retrieve conditional probability for this x|y
-                prob_x_i_given_y_j = self.probability_matrices[base_index][y_j - 1, x_i - 1]  # index adjusted to account for no zeros
+                prob_x_i_given_y_j = self.probability_matrices[character_index][y_j, x_i]  # index NOT adjusted to account for no zeros
+
+                # print(x_i, y_j, prob_x_i_given_y_j, 10**prob_x_i_given_y_j)
 
                 # exponentiate by the number of independently observed repeats of this value
                 log_sum += c_i*float(prob_x_i_given_y_j)
@@ -177,6 +183,8 @@ class RunlengthClassifier:
 
         normalized_posterior = self.normalize_likelihoods(log_likelihood_y=log_likelihood_y, max_index=j_max)
 
+        # print(10**normalized_posterior)
+
         return normalized_posterior, j_max
 
     def print_normalized_likelihoods(self, normalized_likelihoods):
@@ -190,14 +198,14 @@ def test():
     while True:
         sys.stdout.write("Enter character: \n")
         input_string = sys.stdin.readline().strip().upper()
-        base_encoding = sequence_to_float[input_string]
+        character_index = sequence_to_index[input_string] - 1
 
         sys.stdout.write("Enter space-separated repeat observations: \n")
         input_string = sys.stdin.readline()
         x = input_string.strip().split(" ")
         x = numpy.array(list(map(int, x)))
 
-        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x=x, base_encoding=base_encoding)
+        normalized_y_log_likelihoods, y_max = runlength_classifier.predict(x=x, character_index=character_index)
         runlength_classifier.print_normalized_likelihoods(10**normalized_y_log_likelihoods)
 
         print("\nMost likely runlength: ", y_max)

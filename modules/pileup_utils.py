@@ -6,6 +6,7 @@ from modules.AlignedSegmentGrabber import MAX_COVERAGE
 from matplotlib import pyplot
 import numpy
 
+scale = numpy.arange(0, 1.0, 1 / 5)
 
 sequence_to_float = {"-":0.02,
                      "A":0.2,
@@ -122,14 +123,13 @@ def save_run_length_training_data(output_dir, pileup_matrix, reference_matrix, p
     numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix, c=pileup_repeat_matrix, d=reference_repeat_matrix)
 
 
-def convert_aligned_reference_to_one_hot(reference_alignment):
+def convert_aligned_reference_to_one_hot(alignment_string):
     """
     given a reference sequence, generate an lx5 matrix of one-hot encodings where l=sequence length and 5 is the # of
     nucleotides, plus a null character
     :param reference_sequence:
     :return:
     """
-    alignment_string = reference_alignment[0][1]
 
     length = len(alignment_string)
     matrix = numpy.zeros([5,length])
@@ -231,13 +231,18 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_c
     return base_matrix, repeat_matrix
 
 
-def plot_one_hot_tensor(tensor):
-    scale = numpy.arange(0,1.0,1/5)
+def flatten_one_hot_tensor(tensor):
+    # tensor shape:
     scaled_tensor = tensor*scale[:,numpy.newaxis,numpy.newaxis]
 
     flattened_tensor = numpy.sum(scaled_tensor,axis=0)
 
-    # print(numpy.sum(tensor, axis=0))
+    return flattened_tensor
+
+
+def plot_one_hot_tensor(tensor):
+
+    flattened_tensor = flatten_one_hot_tensor(tensor)
 
     pyplot.imshow(flattened_tensor)
     pyplot.show()
@@ -253,6 +258,7 @@ def test():
 
     sequences, repeats = collapse_repeats(test_sequences)
     alignments = get_spoa_alignment_no_ref(sequences)
+
     print(alignments)
     print(sequences)
     print(repeats)

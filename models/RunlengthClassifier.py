@@ -145,11 +145,11 @@ class RunlengthClassifier:
                 x_i = int(x_i)
                 y_j = int(y_j)
 
-                if x_i > self.x_max:
-                    x_i = self.x_max
+                if x_i >= self.x_max:
+                    x_i = self.x_max - 1
 
                 # retrieve conditional probability for this x|y
-                prob_x_i_given_y_j = self.probability_matrix[y_j - 1, x_i - 1]  # index adjusted to account for no zeros
+                prob_x_i_given_y_j = self.probability_matrix[y_j, x_i]  # index NOT adjusted to account for no zeros
 
                 # exponentiate by the number of independently observed repeats of this value
                 log_sum += c_i*float(prob_x_i_given_y_j)
