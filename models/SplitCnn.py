@@ -13,17 +13,17 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.kernel_size_vertical = (3,1)
-        self.kernel_size_horizontal = (1,3)
+        self.kernel_size_horizontal = (1,5)
 
         self.leakyrelu = nn.LeakyReLU()
 
         self.n_channels_0_vertical = input_size
-        self.n_channels_1_vertical = 3
-        self.n_channels_2_vertical = 6
+        self.n_channels_1_vertical = 16
+        self.n_channels_2_vertical = 32
 
         self.n_channels_0_horizontal = input_size
-        self.n_channels_1_horizontal = 16
-        self.n_channels_2_horizontal = 32
+        self.n_channels_1_horizontal = 64
+        self.n_channels_2_horizontal = 128
 
         self.conv2d_1_vertical = nn.Conv2d(in_channels=self.n_channels_0_vertical,
                                            out_channels=self.n_channels_1_vertical,
@@ -38,12 +38,12 @@ class Encoder(nn.Module):
         self.conv2d_1_horizontal = nn.Conv2d(in_channels=self.n_channels_0_horizontal,
                                              out_channels=self.n_channels_1_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,1))
+                                             padding=(0,2))
 
         self.conv2d_2_horizontal = nn.Conv2d(in_channels=self.n_channels_1_horizontal,
                                              out_channels=self.n_channels_2_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,1))
+                                             padding=(0,2))
 
     def vertical_convolution(self, x):
         # expected convolution input shape = (batch, channel, H, W)
@@ -168,7 +168,7 @@ class EncoderDecoder(nn.Module):
 
         self.encoder = Encoder(input_size=input_size)
 
-        self.decoder = Decoder(input_size=1900,
+        self.decoder = Decoder(input_size=8000,
                                output_size=output_size,
                                hidden_size=hidden_size,
                                n_layers=n_layers,

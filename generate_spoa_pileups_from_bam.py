@@ -4,6 +4,8 @@ from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
 from handlers.BamHandler import BamHandler
 from handlers.TsvHandler import TsvHandler
+from select_windows import WINDOW_SIZE, CDF_STEP_SIZE
+from modules.window_selection_utils import merge_windows
 from modules.pileup_utils import *
 from modules.alignment_utils import *
 from multiprocessing import Pool
@@ -80,27 +82,37 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                   start=pileup_start,
                                   stop=pileup_end)
 
-    pileup_generator = SegmentGrabber(chromosome_name=chromosome_name,
-                                      start_position=pileup_start,
-                                      end_position=pileup_end,
-                                      ref_sequence=ref_sequence,
-                                      reads=reads)
+    segment_grabber = SegmentGrabber(chromosome_name=chromosome_name,
+                                     start_position=pileup_start,
+                                     end_position=pileup_end,
+                                     ref_sequence=ref_sequence,
+                                     reads=reads)
 
     # if a reference sequence is intended to be added to the pileup, then leave a space for it
     if include_ref:
-        pileup_generator.max_coverage -= 1
+        segment_grabber.max_coverage -= 1
 
-    sequence_dictionary = pileup_generator.get_read_segments()
+    sequence_dictionary, reverse_status_dictionary = segment_grabber.get_read_segments()
 
     if len(sequence_dictionary.keys()) == 0:
         print("\nWARNING: No reads found at position:", pileup_start, pileup_end)
         ref_sequence = None
         read_ids = None
         sequences = None
+        reversal_statuses = None
     else:
-        read_ids, sequences = zip(*sequence_dictionary.items())
+        read_ids = list()
+        sequences = list()
+        reversal_statuses = list()
 
-    return ref_sequence, read_ids, sequences
+        for read_id in sequence_dictionary:
+            sequence = sequence_dictionary[read_id]
+            reverse_status = reverse_status_dictionary[read_id]
+
+            sequences.append(sequence)
+            reversal_statuses.append(reverse_status)
+
+    return ref_sequence, read_ids, sequences, reversal_statuses
 
 
 def build_chromosomal_interval_trees(confident_bed_path):
@@ -323,15 +335,50 @@ def get_non_variant_windows(vcf_path, bed_path, chromosome_name, start_position,
 
 def load_windows(path):
     window_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
-    windows = list()
+
+    positional_window_paths = list()
 
     for window_path in window_paths:
-        with open(window_path, 'rb') as pickle_file:
+        start = int(window_path.split("/")[-1].split("_")[0])
+        positional_window_paths.append([start, window_path])
+
+    positional_window_paths = sorted(positional_window_paths, key=lambda x: x[0])
+
+    merged_windows = list()
+    # w = 0
+    for item in positional_window_paths:
+        path = item[1]
+
+        with open(path, 'rb') as pickle_file:
             window_list = pickle.load(pickle_file)
 
-            windows.extend(window_list)
+            length = len(merged_windows)
 
-    return windows
+            if length > 0:
+                # print(window_list[0])
+                # print(merged_windows[-1])
+
+                merged_windows = merge_windows(windows_a=merged_windows, windows_b=window_list, max_size=CDF_STEP_SIZE)
+
+                # print(merged_windows[length-2:length+2])
+            else:
+                merged_windows = window_list
+
+            # if w == 2:
+            #     exit()
+            # w+=1
+
+    return merged_windows
+
+# def load_windows(path):
+#     window_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
+#     windows = list()
+#
+#     positional_window_paths = list()
+#
+#     for window_path in window_paths:
+#         start = int(window_path.split("/")[-1].split("_")[0])
+#         windows.append([start, window_path])
 
 
 def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, output_dir, generate_from_vcf=False, runlength=False):
@@ -390,62 +437,62 @@ def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name
     :param window:
     :return:
     """
-    bam_handler = BamHandler(bam_file_path)
-    fasta_handler = FastaHandler(reference_file_path)
+    # bam_handler = BamHandler(bam_file_path)
+    # fasta_handler = FastaHandler(reference_file_path)
+    #
+    # pileup_start = window[0]
+    # pileup_end = window[1]      # add random variation here ?
+    #
+    # ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
+    #                                                          bam_handler=bam_handler,
+    #                                                          chromosome_name=chromosome_name,
+    #                                                          pileup_start=pileup_start,
+    #                                                          pileup_end=pileup_end,
+    #                                                          include_ref=True)
+    #
+    # if sequences is None:
+    #     return
+    #
+    # alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
+    # ref_alignment = [ref_alignment]
+    #
+    # pileup_matrix = convert_alignments_to_matrix(alignments)
+    # reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
+    #
+    # if plot_results:
+    #     plot_encodings(pileup_matrix=pileup_matrix, reference_matrix=reference_matrix)
+    #
+    # if print_results:
+    #     print_segments(ref_sequence, sequences)
+    #
+    #     for label, alignstring in alignments:
+    #         print("{0:15s} {1:s}".format(label, alignstring))
+    #
+    #     for label, alignstring in ref_alignment:
+    #         print("{0:15s} {1:s}".format(label, alignstring))
+    #
+    #     # visualize_matrix(pileup_matrix)
+    #     # visualize_matrix(reference_matrix)
+    #
+    # if ref_alignment[0][1].replace("-",'') != ref_sequence:
+    #     print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
+    #     print("unaligned:\t",ref_sequence)
+    #     print("aligned:\t",ref_alignment[0][1].replace("-",''))
+    #
+    # elif save_data:
+    #     save_training_data(output_dir=output_dir,
+    #                        pileup_matrix=pileup_matrix,
+    #                        reference_matrix=reference_matrix,
+    #                        chromosome_name=chromosome_name,
+    #                        start=pileup_start)
+    #
+    # if counter is not None:
+    #     counter.value += 1
+    #
+    #     sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
 
-    pileup_start = window[0]
-    pileup_end = window[1]      # add random variation here ?
 
-    ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
-                                                             bam_handler=bam_handler,
-                                                             chromosome_name=chromosome_name,
-                                                             pileup_start=pileup_start,
-                                                             pileup_end=pileup_end,
-                                                             include_ref=True)
-
-    if sequences is None:
-        return
-
-    alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
-    ref_alignment = [ref_alignment]
-
-    pileup_matrix = convert_alignments_to_matrix(alignments)
-    reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
-
-    if plot_results:
-        plot_encodings(pileup_matrix=pileup_matrix, reference_matrix=reference_matrix)
-
-    if print_results:
-        print_segments(ref_sequence, sequences)
-
-        for label, alignstring in alignments:
-            print("{0:15s} {1:s}".format(label, alignstring))
-
-        for label, alignstring in ref_alignment:
-            print("{0:15s} {1:s}".format(label, alignstring))
-
-        # visualize_matrix(pileup_matrix)
-        # visualize_matrix(reference_matrix)
-
-    if ref_alignment[0][1].replace("-",'') != ref_sequence:
-        print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
-        print("unaligned:\t",ref_sequence)
-        print("aligned:\t",ref_alignment[0][1].replace("-",''))
-
-    elif save_data:
-        save_training_data(output_dir=output_dir,
-                           pileup_matrix=pileup_matrix,
-                           reference_matrix=reference_matrix,
-                           chromosome_name=chromosome_name,
-                           start=pileup_start)
-
-    if counter is not None:
-        counter.value += 1
-
-        sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
-
-
-def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
+def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, sort_sequences_by_length=False, reverse_sort=False, two_pass=False, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -460,21 +507,32 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
     pileup_start = window[0]
     pileup_end = window[1]      # add random variation here ?
 
-    ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
-                                                             bam_handler=bam_handler,
-                                                             chromosome_name=chromosome_name,
-                                                             pileup_start=pileup_start,
-                                                             pileup_end=pileup_end,
-                                                             include_ref=True)
+    ref_sequence, read_ids, sequences, reversal_statuses = get_aligned_segments(fasta_handler=fasta_handler,
+                                                                                bam_handler=bam_handler,
+                                                                                chromosome_name=chromosome_name,
+                                                                                pileup_start=pileup_start,
+                                                                                pileup_end=pileup_end,
+                                                                                include_ref=True)
 
     if sequences is None:
         return
+
+    if sort_sequences_by_length:
+        for sequence in sequences:
+            print(sequence)
+        print()
+
+        sequences = sorted(sequences, key=lambda x: len(x), reverse=reverse_sort)
+        for sequence in sequences:
+            print(sequence)
+
+        print("ref",ref_sequence)
 
     sequences, repeats = collapse_repeats(sequences)
     ref_sequence, ref_repeats = collapse_repeats([ref_sequence])
     ref_sequence = ref_sequence[0]
 
-    alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
+    alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence, two_pass=two_pass)
 
     pileup_matrix, pileup_repeat_matrix = convert_collapsed_alignments_to_one_hot_tensor(alignments,
                                                                                          repeats,
@@ -484,11 +542,33 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
                                                                                                ref_repeats,
                                                                                                fixed_coverage=False)
 
+    reversal_matrix = convert_reversal_statuses_to_integer_matrix(reverse_statuses=reversal_statuses,
+                                                                  pileup_matrix=pileup_matrix)
+
     if plot_results:
-        plot_collapsed_encodings(pileup_matrix=pileup_matrix,
-                                 reference_matrix=reference_matrix,
-                                 pileup_repeat_matrix=pileup_repeat_matrix,
-                                 reference_repeat_matrix=reference_repeat_matrix)
+        n_channels, height, width = pileup_matrix.shape
+
+        x_pileup = pileup_matrix.reshape([n_channels, height, width])
+        y_pileup = reference_matrix.reshape([5, 1, width])
+        x_repeat = pileup_repeat_matrix.reshape([height, width])
+        y_repeat = reference_repeat_matrix.reshape([1, width])
+        reversal = reversal_matrix.reshape([height, width])
+
+        print(x_pileup.shape)
+        print(y_pileup.shape)
+        print(x_repeat.shape)
+        print(y_repeat.shape)
+        print(reversal.shape)
+
+        x_pileup_flat = flatten_one_hot_tensor(x_pileup)
+        y_pileup_flat = flatten_one_hot_tensor(y_pileup)
+        plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
+                                           x_repeat=x_repeat,
+                                           y_pileup=y_pileup_flat,
+                                           y_repeat=y_repeat,
+                                           reversal=reversal,
+                                           show_reversal=False,
+                                           label=True)
 
     if print_results:
         print_segments(ref_sequence, sequences)
@@ -510,6 +590,7 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
                                       reference_matrix=reference_matrix,
                                       pileup_repeat_matrix=pileup_repeat_matrix,
                                       reference_repeat_matrix=reference_repeat_matrix,
+                                      reversal_matrix=reversal_matrix,
                                       chromosome_name=chromosome_name,
                                       start=pileup_start)
 
@@ -538,12 +619,14 @@ def encode_region(bam_file_path, reference_file_path, chromosome_name, region, w
                                      output_dir=output_dir)
 
 
-def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir, max_threads=1, runlength=False, windows_path=None):
+def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, region, window_size, output_dir, reverse_sort, sort_sequences_by_length, two_pass, max_threads=1, runlength=False, windows_path=None):
     length = region[1] - region[0]
 
     if windows_path is None:
+        print("Chunking intervals")
         windows = chunk_interval(interval=region, chunk_size=window_size, length=length)
     else:
+        print("Loading windows")
         windows = load_windows(windows_path)
 
     save_data = True
@@ -556,7 +639,7 @@ def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, 
 
     args_per_thread = list()
     for window in windows:
-        args = [bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data, print_results, plot_results, counter, n_chunks]
+        args = [bam_file_path, reference_file_path, chromosome_name, window, output_dir, sort_sequences_by_length, reverse_sort, two_pass, save_data, print_results, plot_results, counter, n_chunks]
         args_per_thread.append(args)
 
     if len(args_per_thread) < max_threads:
@@ -594,6 +677,102 @@ def compare_runlength_region(bam_file_path, reference_file_path, chromosome_name
                                             plot_results=True)
 
 
+def genomic_run():
+    output_root_dir = "output/"
+    instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
+    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+    # -------------------------------------------------------------------------
+
+    fasta_handler = FastaHandler(reference_file_path)
+
+    # chromosomal_window_paths = ["output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1",
+                                # "output/window_selection/NC_003280.10_0_15279421_2018_10_1_21_25",
+                                # "output/window_selection/NC_003281.10_0_13783801_2018_10_1_22_40",
+                                # "output/window_selection/NC_003282.8_0_17493829_2018_10_1_23_51",
+                                # "output/window_selection/NC_003283.11_0_20924180_2018_10_2_1_22",
+                                # "output/window_selection/NC_003284.9_0_17718942_2018_10_2_3_10",
+                                # "output/window_selection/NC_001328.1_0_13794_2018_10_2_4_46"]
+
+    chromosomal_window_paths = ["output/window_selection/NC_003283.11_0_20924180_2018_10_2_1_22"]
+
+    for path in chromosomal_window_paths:
+        chromosome_name = "_".join(path.split("/")[-1].split("_")[0:2])
+        print("STARTING", chromosome_name)
+
+        region = [-1,-1]
+        runlength = True
+
+        encode_region_parallel(bam_file_path=bam_file_path,
+                               reference_file_path=reference_file_path,
+                               chromosome_name=chromosome_name,
+                               region=region,
+                               window_size=20,
+                               output_dir=output_dir,
+                               runlength=runlength,
+                               max_threads=30,
+                               windows_path=path,
+                               sort_sequences_by_length=False,
+                               reverse_sort=False,
+                               two_pass=True)
+
+
+def run_parameter_comparison():
+    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
+    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+    # -------------------------------------------------------------------------
+
+    fasta_handler = FastaHandler(reference_file_path)
+
+    chromosomal_window_path = "output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1"
+    chromosome_name = "NC_003279.8"
+
+    chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
+    region = [0,chromosome_length]
+
+    runlength = True
+
+    output_root_dir = "output/"
+    instance_dir = "spoa_pileup_generation_anchored_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    encode_region_parallel(bam_file_path=bam_file_path,
+                           reference_file_path=reference_file_path,
+                           chromosome_name=chromosome_name,
+                           region=region,
+                           window_size=20,
+                           output_dir=output_dir,
+                           runlength=runlength,
+                           max_threads=30,
+                           windows_path=chromosomal_window_path,
+                           sort_sequences_by_length=False,
+                           reverse_sort=False,
+                           two_pass=True)
+
+    output_root_dir = "output/"
+    instance_dir = "spoa_pileup_generation_fixed_size_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    encode_region_parallel(bam_file_path=bam_file_path,
+                           reference_file_path=reference_file_path,
+                           chromosome_name=chromosome_name,
+                           region=region,
+                           window_size=20,
+                           output_dir=output_dir,
+                           runlength=runlength,
+                           max_threads=30,
+                           windows_path=None,
+                           sort_sequences_by_length=False,
+                           reverse_sort=False,
+                           two_pass=True)
+
+
 def main():
     output_root_dir = "output/"
     instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
@@ -626,8 +805,8 @@ def main():
     fasta_handler = FastaHandler(reference_file_path)
     contig_names = fasta_handler.get_contig_names()
 
-    # chromosome_name = "NC_003279.8"     # celegans chr1
-    chromosome_name = "NC_003283.11"     # celegans chr5
+    chromosome_name = "NC_003279.8"     # celegans chr1
+    # chromosome_name = "NC_003283.11"     # celegans chr5
     # chromosome_name = "1"
     # chromosome_name = "chr" + chromosome_name
 
@@ -645,37 +824,44 @@ def main():
     # window = [246567, 246587]     # previously failing test case for collapsed reads
     # window = [800000, 800020]
 
-    # test_window(bam_file_path=bam_file_path,
-    #             reference_file_path=reference_file_path,
-    #             chromosome_name=chromosome_name,
-    #             window=window,
-    #             output_dir=output_dir,
-    #             print_results=True,
-    #             save_data=True)
+    # test sites for misalignment
+    # window = [10029532, 10029532+83]
+    # window = [10031827, 10031827+34]
+    # window = [10039004, 10039004+25]
+    # window = [10040234, 10040234+61]
+    # window = [1004298, 1004298+109]
+    # window = [10044514, 10044514+54]
+    # window = [10037167, 10037167+82]
+    window = [14952118-1, 14952118+13]
 
-    # generate_window_run_length_encoding(bam_file_path=bam_file_path,
-    #                                     reference_file_path=reference_file_path,
-    #                                     chromosome_name=chromosome_name,
-    #                                     window=window,
-    #                                     output_dir=output_dir,
-    #                                     print_results=True,
-    #                                     save_data=True)
+    generate_window_run_length_encoding(bam_file_path=bam_file_path,
+                                        reference_file_path=reference_file_path,
+                                        chromosome_name=chromosome_name,
+                                        window=window,
+                                        output_dir=output_dir,
+                                        sort_sequences_by_length=False,
+                                        reverse_sort=False,
+                                        two_pass=True,
+                                        plot_results=True,
+                                        print_results=True,
+                                        save_data=False)
 
     # ---- TEST region --------------------------------------------------------
 
-    region = [2000000, 12000000]
+    # region = [2000000, 12000000]
     # region = [0, chromosome_length]
-    runlength = True
-
-    encode_region_parallel(bam_file_path=bam_file_path,
-                           reference_file_path=reference_file_path,
-                           chromosome_name=chromosome_name,
-                           region=region,
-                           window_size=20,
-                           output_dir=output_dir,
-                           runlength=runlength,
-                           max_threads=30,
-                           windows_path=windows_path)
+    # region = [-1,-1]
+    # runlength = True
+    #
+    # encode_region_parallel(bam_file_path=bam_file_path,
+    #                        reference_file_path=reference_file_path,
+    #                        chromosome_name=chromosome_name,
+    #                        region=region,
+    #                        window_size=20,
+    #                        output_dir=output_dir,
+    #                        runlength=runlength,
+    #                        max_threads=30,
+    #                        windows_path=windows_path)
 
     # ---- COMPARE runlength vs standard encoding for region ------------------
 
@@ -707,4 +893,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    # genomic_run()
+    run_parameter_comparison()

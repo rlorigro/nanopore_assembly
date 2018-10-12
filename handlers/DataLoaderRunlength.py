@@ -69,37 +69,52 @@ class DataLoader:
         self.convert_to_frequency = convert_to_frequency
         self.convert_repeats_to_counts = convert_repeats_to_counts
 
+        if self.use_gpu:
+            print("USING GPU :)")
+            self.x_dtype = torch.cuda.FloatTensor
+            # y_dtype = torch.cuda.FloatTensor  # for MSE Loss or BCE loss
+            self.y_dtype = torch.cuda.LongTensor      # for CE Loss
+
+        else:
+            self.x_dtype = torch.FloatTensor
+            # y_dtype = torch.FloatTensor  # for MSE Loss or BCE loss
+            self.y_dtype = torch.LongTensor      # for CE Loss
+
+
     def __len__(self):
         return self.n_files
 
-    def load_next_file(self, path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache):
+    def load_next_file(self, path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache):
         """
         Assuming there is another file in the list of paths, load it and concatenate with the leftover entries from last
         :return:
         """
         next_path = next(self.path_iterator)
 
-        x_pileup = numpy.load(next_path)['a']
-        y_pileup = numpy.load(next_path)['b']
-        x_repeat = numpy.load(next_path)['c']
-        y_repeat = numpy.load(next_path)['d']
+        x_pileup = numpy.load(next_path)["x_pileup"]
+        y_pileup = numpy.load(next_path)["y_pileup"]
+        x_repeat = numpy.load(next_path)["x_repeat"]
+        y_repeat = numpy.load(next_path)["y_repeat"]
+        reversal = numpy.load(next_path)["reversal"]
 
         # add 3rd dimension
         x_pileup = numpy.expand_dims(x_pileup, axis=0)
         y_pileup = numpy.expand_dims(y_pileup, axis=0)
         x_repeat = numpy.expand_dims(x_repeat, axis=0)
         y_repeat = numpy.expand_dims(y_repeat, axis=0)
+        reversal = numpy.expand_dims(reversal, axis=0).astype(numpy.float64)
 
         x_pileup_cache.append(x_pileup)
         y_pileup_cache.append(y_pileup)
         x_repeat_cache.append(x_repeat)
         y_repeat_cache.append(y_repeat)
+        reversal_cache.append(reversal)
 
         path_cache.append(next_path)
 
         self.files_loaded += 1
 
-        return path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache
+        return path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache
 
     def load_batch(self):
         path_cache = list()
@@ -107,24 +122,28 @@ class DataLoader:
         y_pileup_cache = list()
         x_repeat_cache = list()
         y_repeat_cache = list()
+        reversal_cache = list()
 
         while len(x_pileup_cache) < self.batch_size and self.files_loaded < self.n_files:
-            path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache = \
-                self.load_next_file(path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache)
+            path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache = \
+                self.load_next_file(path_cache=path_cache,
+                                    x_pileup_cache=x_pileup_cache,
+                                    y_pileup_cache=y_pileup_cache,
+                                    x_repeat_cache=x_repeat_cache,
+                                    y_repeat_cache=y_repeat_cache,
+                                    reversal_cache=reversal_cache)
 
-        return path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache
 
-    def parse_batch(self, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch):
-        x_dtype = torch.FloatTensor
-        # y_dtype = torch.FloatTensor  # for MSE Loss or BCE loss
-        y_dtype = torch.LongTensor      # for CE Loss
+        return path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache
 
-        x_pileup_batch = torch.from_numpy(x_pileup_batch).type(x_dtype)
-        y_pileup_batch = torch.from_numpy(y_pileup_batch).type(y_dtype)
-        x_repeat_batch = torch.from_numpy(x_repeat_batch).type(x_dtype)
-        y_repeat_batch = torch.from_numpy(y_repeat_batch).type(y_dtype)
+    def parse_batch(self, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch):
+        x_pileup_batch = torch.from_numpy(x_pileup_batch).type(self.x_dtype)
+        y_pileup_batch = torch.from_numpy(y_pileup_batch).type(self.y_dtype)
+        x_repeat_batch = torch.from_numpy(x_repeat_batch).type(self.x_dtype)
+        y_repeat_batch = torch.from_numpy(y_repeat_batch).type(self.y_dtype)
+        reversal_batch = torch.from_numpy(reversal_batch).type(self.x_dtype)
 
-        return x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch
+        return x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch
 
     def convert_pileup_to_frequency(self, x_pileup_batch):
         caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
@@ -175,13 +194,14 @@ class DataLoader:
         Get the next batch data. DOES NOT RETURN FINAL BATCH IF != BATCH SIZE
         :return:
         """
-        path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache = self.load_batch()
+        path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache = self.load_batch()
 
         if len(path_cache) > 0:
             x_pileup_batch = numpy.concatenate(x_pileup_cache, axis=0)
             y_pileup_batch = numpy.concatenate(y_pileup_cache, axis=0)
             x_repeat_batch = numpy.concatenate(x_repeat_cache, axis=0)
             y_repeat_batch = numpy.concatenate(y_repeat_cache, axis=0)
+            reversal_batch = numpy.concatenate(reversal_cache, axis=0)
 
             assert x_pileup_batch.shape[0] == self.batch_size
             assert y_pileup_batch.shape[0] == self.batch_size
@@ -195,8 +215,8 @@ class DataLoader:
                 x_pileup_batch = self.convert_pileup_to_frequency(x_pileup_batch)
 
             if self.parse_batches:
-                x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch = \
-                    self.parse_batch(x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch)
+                x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch = \
+                    self.parse_batch(x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch)
 
         else:
             self.__init__(file_paths=self.file_paths,
@@ -207,7 +227,7 @@ class DataLoader:
 
             raise StopIteration
 
-        return path_cache, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch
+        return path_cache, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch
 
     def __iter__(self):
         self.load_batch()

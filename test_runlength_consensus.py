@@ -121,15 +121,15 @@ def sequential_repeat_confusion(y_predict, y):
     return confusion
 
 
-def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
-    total_sequence_confusion = None
+def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=False):
+    # total_sequence_confusion = None
     total_expanded_confusion = None
     total_repeat_confusion = list()
 
     for b, batch in enumerate(data_loader):
-        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/len(data_loader)))
+        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/n_batches))
 
-        paths, x_pileup, y_pileup, x_repeat, y_repeat = batch
+        paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
 
         # (n,h,w) shape
         batch_size, n_channels, height, width = x_pileup.shape
@@ -192,8 +192,7 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
                                                                       repeat_consensus_integers=y_repeat_predict,
                                                                       ignore_spaces=True)
 
-
-            # # decode as string to compare with non-runlength version
+            # decode as string to compare with non-runlength version
             expanded_reference_string = \
                 consensus_caller.expand_collapsed_consensus_as_string(consensus_indices=y_pileup_target,
                                                                       repeat_consensus_integers=y_repeat_n,
@@ -252,7 +251,7 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
             # plot_runlength_prediction(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n, y_repeat=y_repeat_predict)
 
-        if b > 10000:
+        if b == n_batches:
             break
     print()
 
@@ -269,24 +268,20 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
 
 def run():
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-12-26-1-1-247"    # arbitrary test 800k
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-6-13-16-52-3-249"    # 2500 window test
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_1mbp_2018-9-18"   # c elegans
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-28-14-53-16-4-271"      #one-hot encoding test
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-1-15-59-28-0-274/NC_003283.11"     # one-hot with anchors
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003282.8"  # one-hot with anchors and reversal matrix chr4 celegans
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     # Training parameters
     batch_size_train = 1
-    checkpoint_interval = 300
+    n_batches = 1000
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train, parse_batches=False)
 
     consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
     print(len(data_loader))
-    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, plot_mismatches=False)
+    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, n_batches=n_batches, plot_mismatches=False)
 
 
 if __name__ == "__main__":

@@ -41,9 +41,9 @@ def plot_kernels_and_column_frequencies(kernel_sums, passing_indices, column_fre
         passing_indices = passing_indices[:,slice_range[0]:slice_range[1]]
         column_frequencies = column_frequencies[:,slice_range[0]:slice_range[1]]
 
-        kernel_sums.reshape(1, slice_range[1] - slice_range[0])
-        passing_indices.reshape(1, slice_range[1] - slice_range[0])
-        column_frequencies.reshape(column_frequencies.shape[0], slice_range[1] - slice_range[0])
+        kernel_sums.reshape(1, kernel_sums.shape[1])
+        passing_indices.reshape(1, passing_indices.shape[1])
+        column_frequencies.reshape(column_frequencies.shape[0], column_frequencies.shape[1])
 
     fig, axes = pyplot.subplots(nrows=3, sharex=True)
     fig.set_size_inches(16,4)
@@ -73,6 +73,28 @@ def plot_kernels_and_column_frequencies(kernel_sums, passing_indices, column_fre
         pyplot.show()
 
     pyplot.close()
+
+
+def merge_windows(windows_a, windows_b, min_size=1, max_size=sys.maxsize):
+    if len(windows_b) > 0:
+
+        last_anchor_a = windows_a[-1][-1] + 1
+        first_anchor_b = windows_b[0][0] - 1
+
+        bridge_length = first_anchor_b - last_anchor_a
+
+        # handle cases where bridge window is too large or is none
+        if min_size < bridge_length < max_size:
+            bridge_window = [last_anchor_a, first_anchor_b]
+            windows = windows_a + [bridge_window] + windows_b
+
+        else:
+            windows = windows_a + windows_b
+
+    else:
+        windows = windows_a + windows_b
+
+    return windows
 
 
 def select_window_edges(passing_indices, reference_start_position):

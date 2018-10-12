@@ -4,6 +4,7 @@ sys.path.append(os.path.dirname(sys.path[0]))
 from handlers.FileManager import FileManager
 from modules.AlignedSegmentGrabber import MAX_COVERAGE
 from matplotlib import pyplot
+import torch
 import numpy
 
 scale = numpy.arange(0, 1.0, 1 / 5)
@@ -27,6 +28,286 @@ index_to_float = [0.02, 0.2, 0.4, 0.6, 0.8]
 index_to_sequence = ["-", "A", "G", "T", "C"]
 
 float_to_index = {0.02:0, 0.2:1, 0.4:2, 0.6:3, 0.8:4}
+
+
+def complement(base):
+    if base == "A":
+        complement = "T"
+    elif base == "T":
+        complement = "A"
+    elif base == "G":
+        complement = "C"
+    elif base == "C":
+        complement = "G"
+    else:
+        complement = "-"
+
+    return complement
+
+
+def label_pileup_encoding_plot(matrix, axis):
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            value = numpy.round(matrix[i,j],3)
+
+            if value == 0:
+                index = 0
+            else:
+                index = float_to_index[value]
+
+            character = index_to_sequence[index]
+
+            axis.text(j,i,character, ha="center", va="center", fontsize=6)
+
+
+def label_repeat_encoding_plot(matrix, axis):
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            value = matrix[i,j]
+
+            axis.text(j,i,str(int(value)), ha="center", va="center", fontsize=6)
+
+
+def plot_runlength_prediction_stranded(x_pileup, x_repeat, y_pileup, y_repeat, reversal, save_path=None, title="", squeeze=False, label=True, show_reversal=True):
+    if type(x_pileup) == torch.Tensor:
+        x_pileup = x_pileup.data.numpy()
+
+    if type(x_repeat) == torch.Tensor:
+        x_repeat = x_repeat.data.numpy()
+
+    if type(y_pileup) == torch.Tensor:
+        y_pileup = y_pileup.data.numpy()
+
+    if type(y_repeat) == torch.Tensor:
+        y_repeat = y_repeat.data.numpy()
+
+    if type(reversal) == torch.Tensor:
+        reversal = reversal.data.numpy()
+
+    print()
+    print(x_pileup.shape)
+    print(y_pileup.shape)
+    print(x_repeat.shape)
+    print(y_repeat.shape)
+    print(reversal.shape)
+
+    x_pileup = x_pileup[:, :]
+    x_repeat = x_repeat[:, :]
+    reversal = reversal[:, :]
+
+    if squeeze:
+        x_pileup.squeeze()
+        x_repeat.squeeze()
+        reversal.squeeze()
+
+    x_pileup_ratio = x_pileup.shape[-2]/y_pileup.shape[-2]
+    y_pileup_ratio = 1
+    x_repeat_ratio = x_repeat.shape[-2]/y_pileup.shape[-2]
+    y_repeat_ratio = y_repeat.shape[-2]/y_pileup.shape[-2]
+    reversal_ratio = reversal.shape[-2]/y_pileup.shape[-2]
+
+    n_rows = 4
+    height_ratios = [y_pileup_ratio, x_pileup_ratio, y_repeat_ratio, x_repeat_ratio]
+
+    if show_reversal:
+        n_rows = 5
+        height_ratios.append(reversal_ratio)
+
+    fig, axes = pyplot.subplots(nrows=n_rows, gridspec_kw={'height_ratios': height_ratios})
+
+    if label:
+        label_pileup_encoding_plot(matrix=y_pileup, axis=axes[0])
+        label_pileup_encoding_plot(matrix=x_pileup, axis=axes[1])
+        label_repeat_encoding_plot(matrix=y_repeat, axis=axes[2])
+        label_repeat_encoding_plot(matrix=x_repeat, axis=axes[3])
+
+    axes[0].imshow(y_pileup)
+    axes[1].imshow(x_pileup)
+    axes[2].imshow(y_repeat)
+    axes[3].imshow(x_repeat)
+
+    axes[0].set_ylabel("y")
+    axes[1].set_ylabel("x sequence")
+    axes[2].set_ylabel("y")
+    axes[3].set_ylabel("x repeats")
+
+    if show_reversal:
+        axes[4].imshow(reversal)
+        axes[4].set_ylabel("reversal")
+
+    axes[0].set_title(title)
+
+    if save_path is not None:
+        pyplot.savefig(save_path)
+    else:
+        pyplot.show()
+        pyplot.close()
+
+
+def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=None, title="", squeeze=False, label=True):
+    if type(x_pileup) == torch.Tensor:
+        x_pileup = x_pileup.data.numpy()
+
+    if type(x_repeat) == torch.Tensor:
+        x_repeat = x_repeat.data.numpy()
+
+    if type(y_pileup) == torch.Tensor:
+        y_pileup = y_pileup.data.numpy()
+
+    if type(y_repeat) == torch.Tensor:
+        y_repeat = y_repeat.data.numpy()
+
+    x_pileup = x_pileup[:, :]
+    x_repeat = x_repeat[:, :]
+
+    if squeeze:
+        x_pileup.squeeze()
+        x_repeat.squeeze()
+
+    print()
+    print(x_pileup.shape)
+    print(y_pileup.shape)
+    print(x_repeat.shape)
+    print(y_repeat.shape)
+
+    x_pileup_ratio = x_pileup.shape[-2]/y_pileup.shape[-2]
+    y_pileup_ratio = 1
+    x_repeat_ratio = x_repeat.shape[-2]/y_pileup.shape[-2]
+    y_repeat_ratio = y_repeat.shape[-2]/y_pileup.shape[-2]
+
+    fig, axes = pyplot.subplots(nrows=4, gridspec_kw={'height_ratios': [y_pileup_ratio,
+                                                                        x_pileup_ratio,
+                                                                        y_repeat_ratio,
+                                                                        x_repeat_ratio]})
+
+    if label:
+        label_pileup_encoding_plot(matrix=y_pileup, axis=axes[0])
+        label_pileup_encoding_plot(matrix=x_pileup, axis=axes[1])
+        label_repeat_encoding_plot(matrix=y_repeat, axis=axes[2])
+        label_repeat_encoding_plot(matrix=x_repeat, axis=axes[3])
+
+    axes[0].imshow(y_pileup)
+    axes[1].imshow(x_pileup)
+    axes[2].imshow(y_repeat)
+    axes[3].imshow(x_repeat)
+
+    axes[0].set_ylabel("y")
+    axes[1].set_ylabel("x sequence")
+    axes[2].set_ylabel("y")
+    axes[3].set_ylabel("x repeats")
+
+    axes[0].set_title(title)
+
+    if save_path is not None:
+        pyplot.savefig(save_path)
+    else:
+        pyplot.show()
+        pyplot.close()
+
+
+def get_joint_base_runlength_observations_vs_truth(x_pileup, x_repeat, y_pileup, y_repeat, reversal, columnar=False, path=None):
+    # input shape: (n_channels, height, width)
+    n_channels, height, width = x_pileup.shape
+
+    if columnar:
+        observations_vs_truths = [list() for i in range(width)]
+    else:
+        observations_vs_truths = list()
+
+    DEBUG_WEIRD_IMAGE = False
+
+    for w in range(width):
+        diff = 0
+
+        # print("\ncolumn: ", w)
+        for h in range(height):
+            # reference has only one "coverage"
+            true_base_index = int(numpy.argmax(y_pileup[:, 0, w]))
+            true_base = index_to_sequence[true_base_index]
+            true_repeat = int(y_repeat[0, w])
+
+            observed_base_index = int(numpy.argmax(x_pileup[:,h,w]))
+            observed_base = index_to_sequence[observed_base_index]
+            observed_repeat = int(x_repeat[0,h,w])
+            base_reversed = bool(reversal[0,h,w])
+
+            diff += abs(true_repeat-observed_repeat)
+
+            if base_reversed:
+                observed_base = complement(observed_base)
+                true_base = complement(true_base)
+
+            observation_vs_truth = ((observed_base, observed_repeat),(true_base, true_repeat))
+            if columnar:
+                observations_vs_truths[w].append(observation_vs_truth)
+            else:
+                observations_vs_truths.append(observation_vs_truth)
+
+
+            # if observed_base == "C" and observed_repeat == 4 and true_repeat == 16:
+            #     DEBUG_WEIRD_IMAGE = True
+
+    # if DEBUG_WEIRD_IMAGE:
+    #     print(path)
+    #     x_pileup_flat = flatten_one_hot_tensor(x_pileup)
+    #     y_pileup_flat = flatten_one_hot_tensor(y_pileup)
+    #     plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
+    #                                        x_repeat=x_repeat.squeeze(),
+    #                                        y_pileup=y_pileup_flat,
+    #                                        y_repeat=y_repeat,
+    #                                        reversal=reversal.squeeze(),
+    #                                        show_reversal=False,
+    #                                        label=True)
+
+    # if width > 500:
+    #     x_pileup_flat = flatten_one_hot_tensor(x_pileup)
+    #     y_pileup_flat = flatten_one_hot_tensor(y_pileup)
+    #     plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
+    #                                        x_repeat=x_repeat.squeeze(),
+    #                                        y_pileup=y_pileup_flat,
+    #                                        y_repeat=y_repeat,
+    #                                        reversal=reversal.squeeze(),
+    #                                        label=False)
+
+    return observations_vs_truths
+
+
+def get_joint_base_runlength_observations(x_pileup, x_repeat, reversal, columnar=False, use_complement=False, max_runlength=sys.maxsize):
+    # input shape: (n_channels, height, width)
+    n_channels, height, width = x_pileup.shape
+
+    if reversal is None:
+        reversal = numpy.zeros([1, height, width], dtype=numpy.bool)
+
+    if columnar:
+        observations = [list() for i in range(width)]
+    else:
+        observations = list()
+
+    for w in range(width):
+        for h in range(height):
+            # reference has only one "coverage"
+            observed_base_index = int(numpy.argmax(x_pileup[:, h, w]))
+            observed_base = index_to_sequence[observed_base_index]
+            observed_repeat = int(x_repeat[0, h, w])
+            base_reversed = bool(reversal[0, h, w])
+
+            # print(observed_base_index, observed_base, observed_repeat, true_base_index, true_base, true_repeat, base_reversed)
+            # if use_complement:
+            #     if base_reversed:
+            #         observed_base = complement(observed_base)
+
+            if observed_repeat > max_runlength:
+                observed_repeat = max_runlength
+
+            observation = (observed_base, observed_repeat, base_reversed)
+
+            if columnar:
+                observations[w].append(observation)
+            else:
+                observations.append(observation)
+
+    return observations
 
 
 def visualize_matrix(matrix):
@@ -104,7 +385,7 @@ def save_training_data(output_dir, pileup_matrix, reference_matrix, chromosome_n
     numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix)
 
 
-def save_run_length_training_data(output_dir, pileup_matrix, reference_matrix, pileup_repeat_matrix, reference_repeat_matrix, chromosome_name, start):
+def save_run_length_training_data(output_dir, pileup_matrix, reference_matrix, pileup_repeat_matrix, reference_repeat_matrix, reversal_matrix, chromosome_name, start):
     array_file_extension = ".npz"
 
     # ensure chromosomal directory exists
@@ -120,7 +401,12 @@ def save_run_length_training_data(output_dir, pileup_matrix, reference_matrix, p
     data_path = output_path_prefix + "_matrix" + array_file_extension
 
     # write numpy arrays
-    numpy.savez_compressed(data_path, a=pileup_matrix, b=reference_matrix, c=pileup_repeat_matrix, d=reference_repeat_matrix)
+    numpy.savez_compressed(data_path,
+                           x_pileup=pileup_matrix,
+                           y_pileup=reference_matrix,
+                           x_repeat=pileup_repeat_matrix,
+                           y_repeat=reference_repeat_matrix,
+                           reversal=reversal_matrix)
 
 
 def convert_aligned_reference_to_one_hot(alignment_string):
@@ -229,6 +515,26 @@ def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_c
     repeat_matrix = numpy.atleast_2d(repeat_matrix)
 
     return base_matrix, repeat_matrix
+
+
+def convert_reversal_statuses_to_integer_matrix(reverse_statuses, pileup_matrix):
+    n_channels, height, width = pileup_matrix.shape
+
+    reversal_matrix = numpy.zeros([height, width])
+    non_blank_mask = (pileup_matrix[0, :, :] == 0)
+
+    for r,reversal_status in enumerate(reverse_statuses):
+        reversal_matrix[r,:] = reversal_status
+
+    reversal_matrix = numpy.logical_and(non_blank_mask, reversal_matrix)
+
+    # fig, axes = pyplot.subplots(nrows=2)
+    # axes[0].imshow(reversal_matrix)
+    # axes[1].imshow(flatten_one_hot_tensor(pileup_matrix))
+    # pyplot.show()
+    # pyplot.close()
+
+    return reversal_matrix
 
 
 def flatten_one_hot_tensor(tensor):

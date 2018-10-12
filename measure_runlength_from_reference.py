@@ -16,9 +16,13 @@ def count_runlength_per_character(sequence):
     current_character = None
     current_count = 0
 
-    for character in sequence:
+    for c,character in enumerate(sequence):
         if character != current_character:
             character_counts[character].append(current_count)
+
+            if current_count > 8:
+                print(current_count, "at position ", c-current_count)
+
             current_count = 0
         else:
             current_count += 1
@@ -60,14 +64,12 @@ def main():
     fasta_handler = FastaHandler(reference_file_path)
     contig_names = fasta_handler.get_contig_names()
 
-    # chromosome_name = "NC_003279.8"     # celegans chr1
-    chromosome_name = "NC_003283.11"     # celegans chr5
+    chromosome_name = "NC_003279.8"     # celegans chr1
+    # chromosome_name = "NC_003283.11"     # celegans chr5
     # chromosome_name = "1"
     # chromosome_name = "chr" + chromosome_name
 
     chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
-
-    base_runlengths = [list() for base in [A,G,T,C]]
 
     reference_sequence = fasta_handler.get_sequence(chromosome_name=chromosome_name, start=0, stop=chromosome_length)
 
@@ -82,6 +84,9 @@ def main():
         step = 1
         bins = numpy.arange(0, max_count + step, step=step)
         frequencies, bins = numpy.histogram(counts, bins=bins, normed=False)
+
+        print(bins)
+        print(frequencies)
 
         print(bins.shape)
         center = (bins[:-1] + bins[1:])/2 - step/2

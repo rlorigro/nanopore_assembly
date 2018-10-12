@@ -5,7 +5,11 @@ from modules.pileup_utils import convert_collapsed_alignments_to_matrix
 from modules.pileup_utils import convert_aligned_reference_to_one_hot
 from modules.pileup_utils import convert_alignments_to_matrix, convert_collapsed_alignments_to_one_hot_tensor
 from modules.pileup_utils import sequence_to_index, sequence_to_float, index_to_sequence
-from models.RunlengthClassifier import RunlengthClassifier, MATRIX_PATH
+from modules.pileup_utils import get_joint_base_runlength_observations
+from modules.pileup_utils import flatten_one_hot_tensor
+from models.BaseRunlengthClassifier import RunlengthClassifier, MATRIX_PATH
+from models.JointClassifier import JointClassifier, JOINT_DISTRIBUTION_PATH
+from collections import Counter
 from matplotlib import pyplot
 import numpy
 
@@ -16,6 +20,7 @@ class ConsensusCaller:
         self.float_to_index = self.get_float_to_index(sequence_to_float, sequence_to_index)
 
         self.runlength_classifier = None
+        self.joint_classifier = None
 
     def get_inverse_dictionary(self, a):
         inverse = dict()
@@ -92,6 +97,38 @@ class ConsensusCaller:
 
         consensus_string = ''.join(consensus_characters)
         return consensus_string
+
+    def call_joint_consensus_as_integers(self, pileup, repeat, reversal):
+        if self.joint_classifier is None:
+            self.joint_classifier = JointClassifier(JOINT_DISTRIBUTION_PATH)
+
+        columnar_pileup = get_joint_base_runlength_observations(x_pileup=pileup,
+                                                                x_repeat=repeat,
+                                                                reversal=reversal,
+                                                                columnar=True,
+                                                                max_runlength=50)
+
+        column_joint_predictions = list()
+        for column in columnar_pileup:
+            posterior, max_posterior, max_prediction = self.joint_classifier.get_consensus_posterior(pileup=column)
+            column_joint_predictions.append(max_prediction)
+
+            # print()
+            # print(column)
+            # print(list(Counter(column).items()))
+            # print(sorted(posterior.items(), key=lambda x: posterior[x[0]], reverse=True)[:5])
+            # print("predicted: ", max_prediction)
+
+        base_consensus = numpy.zeros([len(column_joint_predictions)])
+        repeat_consensus = numpy.zeros([len(column_joint_predictions)])
+        for c,joint_prediction in enumerate(column_joint_predictions):
+            character = joint_prediction[0]
+            repeat = joint_prediction[1]
+
+            base_consensus[c] = sequence_to_index[character]
+            repeat_consensus[c] = repeat
+
+        return base_consensus, repeat_consensus
 
     def call_consensus_as_index_from_one_hot(self, pileup_matrix, string_output=False):
         # input shape: (n_channels, coverage, seq_length)
@@ -339,7 +376,7 @@ class ConsensusCaller:
 
             if use_model:
                 normalized_y_log_likelihoods, column_repeat_consensus = \
-                    self.runlength_classifier.predict(x=repeat_column)
+                    self.runlength_classifier.predict(x=repeat_column, character_index=base_index)
 
                 # self.runlength_classifier.predict(x=repeat_column, character_index=base_index, skip_zeros=False) # SKIPPING ZEROS for legacy model
             else:
@@ -350,6 +387,73 @@ class ConsensusCaller:
         repeat_consensus = numpy.round(repeat_consensus)
 
         return repeat_consensus
+
+    def get_consensus_repeats_from_one_hot(self, repeat_matrix, pileup_matrix):
+        consensus_indices = self.call_consensus_as_index_from_one_hot(pileup_matrix)
+
+        # print(pileup_matrix.shape)
+
+        c, n, m = pileup_matrix.shape
+
+        repeats = list()
+
+        for column_index in range(m):
+            pileup_column = pileup_matrix[:, :, column_index]
+            repeat_column = repeat_matrix[:, :, column_index]
+            consensus_index = consensus_indices[column_index]
+
+            # print(pileup_column.shape)
+            # print(repeat_column.shape)
+
+            mask = pileup_column[consensus_index, :].astype(numpy.bool).reshape([1,n])
+
+            # print(mask.shape)
+            # print(consensus_index)
+
+            # print(mask.astype(numpy.uint8))
+
+            column_repeats = repeat_column[mask]
+
+            # print(pileup_column)
+            # print(column_repeats)
+
+            repeats.append(column_repeats)
+
+        return repeats
+
+    def get_repeats_from_one_hot(self, repeat_matrix):
+        # consensus_indices = self.call_consensus_as_index_from_one_hot(pileup_matrix)
+
+        # print(pileup_matrix.shape)
+
+        c, n, m = repeat_matrix.shape
+
+        repeats = list()
+
+        for column_index in range(m):
+            # pileup_column = pileup_matrix[:, :, column_index]
+            repeat_column = repeat_matrix[:, :, column_index]
+            # consensus_index = consensus_indices[column_index]
+
+            # print(pileup_column.shape)
+            # print(repeat_column.shape)
+
+            # mask = pileup_column[consensus_index, :].astype(numpy.bool).reshape([1,n])
+
+            # print(mask.shape)
+            # print(consensus_index)
+
+            # print(mask.astype(numpy.uint8))
+
+            # column_repeats = repeat_column[mask]
+
+            # print(pileup_column)
+            # print(column_repeats)
+
+            repeats.append(repeat_column.squeeze())
+
+        return repeats
+
 
     def get_consensus_repeats(self, repeat_matrix, pileup_matrix, consensus_encoding):
         """
@@ -410,13 +514,18 @@ class ConsensusCaller:
     def expand_collapsed_consensus_as_string(self, consensus_indices, repeat_consensus_integers, ignore_spaces=False):
         consensus_characters = list()
 
+        # print(repeat_consensus_integers.shape)
+
+        consensus_indices = numpy.round(consensus_indices, 0)
+        repeat_consensus_integers = numpy.round(repeat_consensus_integers, 0)
+
         m = repeat_consensus_integers.shape[0]
 
         expanded_index = 0
         for collapsed_index in range(m):
             # blanks coded as 0 repeats, but for comparison sake, we want to include blanks
             n_repeats = max(1,int(repeat_consensus_integers[collapsed_index]))
-            character_index = consensus_indices[collapsed_index]
+            character_index = int(consensus_indices[collapsed_index])
 
             if ignore_spaces:
                 if self.index_to_sequence[character_index] == "-":

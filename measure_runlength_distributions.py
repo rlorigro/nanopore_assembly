@@ -15,6 +15,23 @@ numpy.set_printoptions(linewidth=400, threshold=100000, suppress=True, precision
 FREQUENCY_THRESHOLD = 0.7
 
 
+def normalize_frequency_matrix(frequency_matrix, log_scale):
+    """
+    for each true value Y, normalize observed values x such that the sum of p(x_i|Y) for all i = 1
+    :param probability_matrix:
+    :param log_scale:
+    :return:
+    """
+    sum_y = numpy.sum(frequency_matrix, axis=1)
+
+    probability_matrix = frequency_matrix / sum_y[:, numpy.newaxis]
+
+    if log_scale:
+        probability_matrix = numpy.log10(probability_matrix)
+
+    return probability_matrix
+
+
 def save_numpy_matrix(output_dir, filename, matrix):
     array_file_extension = ".npz"
 
@@ -61,7 +78,7 @@ def plot_runlength_distributions(runlengths):
     pyplot.close()
 
 
-def get_runlengths(x_pileup, x_repeat, y_pileup, y_repeat):
+def get_runlengths(x_pileup, x_repeat, y_repeat):
     lengths = defaultdict(list)
 
     consensus_caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
@@ -69,47 +86,47 @@ def get_runlengths(x_pileup, x_repeat, y_pileup, y_repeat):
     allele_frequencies = consensus_caller.get_normalized_frequencies(pileup_matrix=x_pileup)
 
     x_max_indices = numpy.argmax(allele_frequencies, axis=0)
-    y_max_indices = numpy.argmax(y_pileup, axis=0)
-
-    # print(y_repeat)
-
-    # match_mask = (x_max_indices == y_max_indices)
-    # nonzero_mask = (x_max_indices > 0)
-    #
-    # # print(type(match_mask))
-    # mask = numpy.logical_and(match_mask, nonzero_mask)
-    #
-    # # print(match_mask)
-    # # print(nonzero_mask)
-    # # print(mask)
-    # # print(x_repeat.shape)
-    #
-    # x_max_indices = x_max_indices[mask]
-    # x_pileup = x_pileup[:,mask]
-    # x_repeat = x_repeat[:,mask]
-    # y_repeat = y_repeat[:,mask]
-
-    # print()
-    # print(numpy.sum(x_repeat, axis=0)/x_repeat.shape[0])
-    # print(y_repeat)
 
     x_max_encoding = convert_indices_to_float_encodings(x_max_indices)
-
-    # print(x_max_encoding.shape)
-    # print(x_pileup.shape)
 
     x_repeat = consensus_caller.get_consensus_repeats(repeat_matrix=x_repeat, pileup_matrix=x_pileup, consensus_encoding=x_max_encoding)
 
     for i in range(len(y_repeat)):
         y = int(y_repeat[:,i])
-        x = x_repeat[i]
-
-        # if y > 5:
-            # print()
-            # print("y", y)
-            # print("x", x)
+        x = int(x_repeat[i])
 
         lengths[y].append(x)
+
+    return lengths
+
+
+def get_runlengths_from_one_hot(x_pileup, x_repeat, y_repeat):
+    lengths = defaultdict(list)
+
+    consensus_caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
+
+    # consensus_repeats = consensus_caller.get_consensus_repeats_from_one_hot(repeat_matrix=x_repeat, pileup_matrix=x_pileup)
+    consensus_repeats = consensus_caller.get_repeats_from_one_hot(repeat_matrix=x_repeat)
+
+    for i in range(y_repeat.shape[-1]):
+        # print(y_repeat.shape)
+        y = int(y_repeat[0,0,i])
+
+        # print(x_repeat[i])
+        x = consensus_repeats[i]
+
+        # print(x.ndim)
+        if x.ndim == 1:
+            lengths[y].append(x)
+        else:
+            # print(x)
+            x = numpy.atleast_1d(x)
+            # print(x)
+            lengths[y].append(x)
+
+        # if y > 8:
+        #     print(y)
+        #     print(x)
 
     return lengths
 
@@ -150,45 +167,51 @@ def measure_runlengths(data_loader):
 
     print("testing n windows: ", n_files)
 
-    for paths, x_pileup, y_pileup, x_repeat, y_repeat in data_loader:
-        x_pileup = trim_empty_rows(x_pileup[0,:,:], background_value=sequence_to_float["-"])
-        y_pileup = y_pileup[0,:,:]
-        x_repeat = trim_empty_rows(x_repeat[0,:,:], background_value=sequence_to_float["-"])
-        y_repeat = y_repeat[0,:,:]
+    for batch in data_loader:
+        paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
 
-        x_pileup = numpy.atleast_2d(x_pileup)
-        y_pileup = numpy.atleast_2d(y_pileup)
-        x_repeat = numpy.atleast_2d(x_repeat)
-        y_repeat = numpy.atleast_2d(y_repeat)
+        # x_pileup = trim_empty_rows(x_pileup[0,:,:], background_value=sequence_to_float["-"])
+        # # y_pileup = y_pileup[0,:,:]
+        # x_repeat = trim_empty_rows(x_repeat[0,:,:], background_value=sequence_to_float["-"])
+        # y_repeat = y_repeat[0,:,:]
+        #
+        # x_pileup = numpy.atleast_2d(x_pileup)
+        # # y_pileup = numpy.atleast_2d(y_pileup)
+        # x_repeat = numpy.atleast_2d(x_repeat)
+        # y_repeat = numpy.atleast_2d(y_repeat)
 
-        try:
-            runlengths = get_runlengths(x_pileup=x_pileup, x_repeat=x_repeat, y_pileup=y_pileup, y_repeat=y_repeat)
-        except IndexError as e:
-            print()
-            print(e)
-            # pyplot.imshow(x_repeat)
-            # pyplot.show()
-            # pyplot.close()
-            # pyplot.imshow(x_pileup)
-            # pyplot.show()
-            # pyplot.close()
-            continue
+        x_pileup = x_pileup[0,:,:,:]
+        y_pileup = y_pileup[0,:,:,:]
+        x_repeat = x_repeat[0,:,:,:]
+        y_repeat = y_repeat[0,:,:,:]
+
+        # try:
+        runlengths = get_runlengths_from_one_hot(x_pileup=x_pileup, x_repeat=x_repeat, y_repeat=y_repeat)
+
+        # except IndexError as e:
+        #     print()
+        #     print(e)
+        #     # pyplot.imshow(x_repeat)
+        #     # pyplot.show()
+        #     # pyplot.close()
+        #     # pyplot.imshow(x_pileup)
+        #     # pyplot.show()
+        #     # pyplot.close()
+        #     continue
 
         for key in runlengths:
             runlength_values = runlengths[key]
             all_runlengths[key].extend(runlength_values)
 
-        if n % 1 == 0:
-            sys.stdout.write("\r " + str(round(n/n_files*100,3)) + "% completed")
+        sys.stdout.write("\r " + str(round(n/n_files*100,3)) + "% completed")
+        n += 1
 
-            n += 1
-
-        # if n > 10000:
+        # if n > 1000:
         #     break
 
     sys.stdout.write("\r 100%% completed     \n")
 
-    for key in all_runlengths:
+    for key in list(all_runlengths.keys()):
         runlength_values = all_runlengths[key]
         all_runlengths[key] = numpy.concatenate(runlength_values)
 
@@ -196,12 +219,14 @@ def measure_runlengths(data_loader):
 
     runlength_matrix = encode_runlength_distributions_as_matrix(all_runlengths, log_scale=False, normalize_observed=False)
 
-    pyplot.imshow(runlength_matrix)
+    pyplot.imshow(normalize_frequency_matrix(runlength_matrix, log_scale=True))
     pyplot.show()
 
     output_dir = "output/runlength_frequency_matrix"
     datetime_string = '-'.join(list(map(str, datetime.datetime.now().timetuple()))[:-3])
     filename = "runlength_probability_matrix_" + datetime_string
+
+    print("SAVING: ", os.path.join(output_dir, filename))
 
     save_numpy_matrix(output_dir=output_dir, filename=filename, matrix=runlength_matrix)
 
@@ -210,7 +235,11 @@ def run():
     # data_path = "/home/ryan/code/nanopore_assembly/output/celegans_chr1_1m_windows_spoa_pileup_generation_2018-9-18"    # 1 million bases in celegans chr1 scrappie
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_human_chr1_1mbp_2018-9-18"             # 1 million bases in human guppy
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_2-12Mbp_2018-9-21"       # 10 million bases in human guppy
-    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr5_FULL_20Mbp_2018-9-24"
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr5_FULL_20Mbp_2018-9-24"             # chr5 full float encoded
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003279.8"  # chr1 one-hot
+    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_fixed_size2018-10-11-13-1-59-3-284"    # chr1 fixed size windows one-hot
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored2018-10-11-11-20-29-3-284"    # chr1 windowed windows one-hot
+
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=data_path, file_extension=".npz")
 

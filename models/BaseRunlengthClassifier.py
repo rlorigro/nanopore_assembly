@@ -8,7 +8,8 @@ from scipy.misc import logsumexp
 
 numpy.set_printoptions(precision=3, linewidth=400, suppress=True)
 
-MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-9-25-13-42-30.npz"
+# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-9-25-13-42-30.npz"   # sharp, filtered
+MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018-9-20-14-21-6.npz"     # diffuse, unfiltered
 
 
 class RunlengthClassifier:
@@ -45,7 +46,7 @@ class RunlengthClassifier:
         base_frequency_matrices = [None for base in matrix_labels]
 
         for base in matrix_labels:
-            matrix = numpy.load(path)[base]
+            matrix = numpy.load(path)[base.upper()]     # toggle for stupidity
             matrix = matrix[1:, 1:]  # trim 0 columns (for now)
 
             base_index = sequence_to_index[base.upper()] - 1
@@ -62,7 +63,7 @@ class RunlengthClassifier:
                                                                      log_scale=log_scale)
             normalized_frequency_matrices.append(normalized_frequencies)
 
-            # self.plot_matrix(normalized_frequencies)
+            self.plot_matrix(normalized_frequencies)
 
         return normalized_frequency_matrices
 
@@ -183,7 +184,8 @@ class RunlengthClassifier:
 
         normalized_posterior = self.normalize_likelihoods(log_likelihood_y=log_likelihood_y, max_index=j_max)
 
-        # print(10**normalized_posterior)
+        print(10**normalized_posterior)
+        print(j_max)
 
         return normalized_posterior, j_max
 

@@ -26,6 +26,7 @@ class SegmentGrabber:
         self.read_alignment_ends = dict()
 
         self.sequences = defaultdict(list)
+        self.reversal_status = defaultdict()
         self.qualities = defaultdict(list)
         self.cigars = defaultdict(list)
 
@@ -40,7 +41,7 @@ class SegmentGrabber:
             if r == self.max_coverage:
                 break
 
-        return self.sequences
+        return self.sequences, self.reversal_status
 
     def get_aligned_segment_from_read(self, read):
         """
@@ -111,6 +112,9 @@ class SegmentGrabber:
 
                     if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR*self.window_size:
                         self.sequences[read_id] = sequence
+
+                # if the read segment has been obtained then fetch its directionality (Forward/Reverse), True if Reverse
+                self.reversal_status[read_id] = read.is_reverse
 
                 # else:
                 #     print("incomplete read segment")

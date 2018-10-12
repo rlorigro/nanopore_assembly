@@ -7,6 +7,10 @@ import pickle
 from datetime import datetime
 
 
+WINDOW_SIZE = 10000
+CDF_STEP_SIZE = 500
+
+
 def write_windows_to_file(windows, output_dir, filename):
     FileManager.ensure_directory_exists(output_dir)
 
@@ -22,32 +26,18 @@ def write_windows_to_file(windows, output_dir, filename):
     #     print(test)
 
 
-def merge_windows(windows_a, windows_b):
-    if len(windows_b) > 0:
-
-        last_anchor_a = windows_a[-1][-1] + 1
-        first_anchor_b = windows_b[0][0] - 1
-
-        if first_anchor_b - last_anchor_a > 1:
-            bridge_window = [last_anchor_a, first_anchor_b]
-
-            windows = windows_a + [bridge_window] + windows_b
-
-    else:
-        windows = windows_a + windows_b
-
-    return windows
-
-
 def get_window_edges(bam_file_path, reference_sequence, chromosome_name, region_window, p_threshold, n_steps, output_dir, counter=None, n_chunks=1):
     sam_file = pysam.AlignmentFile(bam_file_path, "rb")
 
-    intervals = chunk_region(region=region_window, size=500)
+    intervals = chunk_region(region=region_window, size=CDF_STEP_SIZE)
 
     all_windows = list()
 
     for interval in intervals:
         column_frequencies = get_column_frequencies(sam_file, reference_sequence, chromosome_name, interval)
+
+        if not len(column_frequencies) > 0:
+            continue
 
         column_frequencies = numpy.concatenate(column_frequencies, axis=1)
         match_frequencies = column_frequencies[0, :]
@@ -114,61 +104,6 @@ def chunk_region(region, size):
     return windows
 
 
-def main():
-    # output_root_dir = "output/"
-    # instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
-    # output_dir = os.path.join(output_root_dir, instance_dir)
-
-    # ---- Nanopore - GUPPY HUMAN - (dev machine) -----------------------------
-    # bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
-    # reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
-    # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
-    # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
-
-    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
-    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
-    # -------------------------------------------------------------------------
-
-    fasta_handler = FastaHandler(reference_file_path)
-    contig_names = fasta_handler.get_contig_names()
-
-    # chromosome_name = "NC_003279.8"     # celegans chr1
-    chromosome_name = "NC_003283.11"     # celegans chr5
-    # chromosome_name = "1"
-    # chromosome_name = "chr" + chromosome_name
-
-    chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
-
-    region = [0, chromosome_length]
-    window_size = 10000
-
-    max_threads = 30
-    n_steps = 200
-    p_threshold = 0.90
-
-    now = datetime.now()
-    now = [now.year, now.month, now.day, now.hour, now.minute]
-    datetime_string = "_".join(list(map(str, now)))
-
-    output_dir = "output/window_selection/" + str(chromosome_name) + "_" + str(region[0]) + "_" + str(region[1]) + "_" + datetime_string
-    print(output_dir)
-
-    reference_sequence = fasta_handler.get_sequence(chromosome_name=chromosome_name,
-                                                    start=0,
-                                                    stop=chromosome_length)
-
-    parse_region_parallel(bam_file_path=bam_file_path,
-                          reference_sequence=reference_sequence,
-                          chromosome_name=chromosome_name,
-                          region=region,
-                          window_size=window_size,
-                          p_threshold=p_threshold,
-                          output_dir=output_dir,
-                          n_steps=n_steps,
-                          max_threads=max_threads)
-
-
 def parse_region_parallel(bam_file_path, reference_sequence, chromosome_name, region, window_size, p_threshold, output_dir, n_steps, max_threads):
     region_windows = chunk_region(region=region, size=window_size)
 
@@ -194,8 +129,67 @@ def parse_region_parallel(bam_file_path, reference_sequence, chromosome_name, re
     print()
 
 
+def main():
+    # output_root_dir = "output/"
+    # instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
+    # output_dir = os.path.join(output_root_dir, instance_dir)
+
+    # ---- Nanopore - GUPPY HUMAN - (dev machine) -----------------------------
+    # bam_file_path = "/home/ryan/data/Nanopore/Human/BAM/Guppy/rel5-guppy-0.3.0-chunk10k.sorted.bam"
+    # reference_file_path = "/home/ryan/data/GIAB/GRCh38_WG.fa"
+    # vcf_path = "/home/ryan/data/GIAB/NA12878_GRCh38_PG.vcf.gz"
+    # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
+
+    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
+    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # -------------------------------------------------------------------------
+
+    fasta_handler = FastaHandler(reference_file_path)
+    contig_names = fasta_handler.get_contig_names()
+
+    # chromosome_name = "NC_003279.8"     # celegans chr1
+
+    # chromosome_name = "NC_003283.11"     # celegans chr5
+    # chromosome_name = "1"
+    # chromosome_name = "chr" + chromosome_name
+
+    for chromosome_name in contig_names:
+        print("STARTING:", chromosome_name)
+
+        chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
+
+        region = [0, chromosome_length]
+
+        max_threads = 30
+        n_steps = 200
+        p_threshold = 0.90
+
+        now = datetime.now()
+        now = [now.year, now.month, now.day, now.hour, now.minute]
+        datetime_string = "_".join(list(map(str, now)))
+
+        output_dir = "output/window_selection/" + str(chromosome_name) + "_" + str(region[0]) + "_" + str(region[1]) + "_" + datetime_string
+        print(output_dir)
+
+        reference_sequence = fasta_handler.get_sequence(chromosome_name=chromosome_name,
+                                                        start=0,
+                                                        stop=chromosome_length)
+
+        parse_region_parallel(bam_file_path=bam_file_path,
+                              reference_sequence=reference_sequence,
+                              chromosome_name=chromosome_name,
+                              region=region,
+                              window_size=WINDOW_SIZE,
+                              p_threshold=p_threshold,
+                              output_dir=output_dir,
+                              n_steps=n_steps,
+                              max_threads=max_threads)
+
+        print("COMPLETED:", chromosome_name, '\n')
+
+
 if __name__ == "__main__":
     # windows = chunk_region_into_windows([0,200], size=30)
     # print(windows)
-
     main()

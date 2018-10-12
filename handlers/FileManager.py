@@ -1,6 +1,9 @@
+from datetime import datetime
 import shutil
 from os import listdir, remove, walk, mkdir
 from os.path import isfile, isdir, join, dirname, exists
+import pickle
+import glob
 
 """
 EXAMPLE USAGE:
@@ -62,11 +65,14 @@ class FileManager:
         :param sort:
         :return:
         """
-        all_files = list()
+        all_files = set()
 
         for root, dirs, files in walk(parent_directory_path):
-            sub_files = [join(root,subfile) for subfile in files if subfile.endswith(file_extension)]
-            all_files.extend(sub_files)
+            for file in files:
+                if file.endswith(file_extension):
+                    all_files.add(join(root,file))
+
+        all_files = list(all_files)
 
         if sort:
             all_files.sort()
@@ -102,6 +108,29 @@ class FileManager:
         """
         for file_path in file_paths:
             remove(file_path)
+
+    @staticmethod
+    def get_datetime_string():
+        now = datetime.now()
+        now = [now.year, now.month, now.day, now.hour, now.minute, now.second, now.microsecond]
+        datetime_string = "_".join(list(map(str, now)))
+
+        return datetime_string
+
+    @staticmethod
+    def save_object_pickle(output_dir, filename, object):
+        array_file_extension = ".pkl"
+
+        # ensure chromosomal directory exists
+        if not exists(output_dir):
+            FileManager.ensure_directory_exists(output_dir)
+
+        output_path_prefix = join(output_dir, filename)
+
+        output_path = output_path_prefix + array_file_extension
+
+        with open(output_path, 'wb') as output:
+            pickle.dump(object, output, pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == "__main__":

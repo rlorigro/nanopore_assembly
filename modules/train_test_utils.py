@@ -2,11 +2,45 @@ from modules.ConsensusCaller import ConsensusCaller
 from modules.alignment_utils import *
 from modules.pileup_utils import *
 from matplotlib import pyplot
+from os import path
+import datetime
 import numpy
 import torch
 import sys
 import os
 sys.path.append(os.path.dirname(sys.path[0]))
+
+
+class ResultsHandler:
+    def __init__(self):
+        self.datetime_string = '-'.join(list(map(str, datetime.datetime.now().timetuple()))[:-1])
+        self.subdirectory_name = "training_" + self.datetime_string
+
+        self.output_directory_name = "output/"
+        self.directory = path.join(self.output_directory_name, self.subdirectory_name)
+
+        self.n_checkpoints = 0
+
+        FileManager.ensure_directory_exists(self.directory)
+
+    def save_plot(self, losses):
+        loss_plot_filename = path.join(self.directory, "loss.png")
+
+        figure = pyplot.figure()
+        axes = pyplot.axes()
+        axes.plot(losses)
+        pyplot.savefig(loss_plot_filename)
+
+    def save_model(self, model):
+        self.n_checkpoints += 1
+
+        model_filename = path.join(self.directory, "model_checkpoint_%d" % self.n_checkpoints)
+        torch.save(model.state_dict(), model_filename)
+
+        print("MODEL SAVED: ", model_filename)
+
+    def save_config(self, model):
+        pass
 
 
 def calculate_accuracy_from_confusion(matrix, exclude_gaps=False):
@@ -30,8 +64,8 @@ def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_align
     # ref_alignment = [ref_alignment]
 
     if print_alignment:
-        print(alignments[0])
         print(ref_alignment[0])
+        print(alignments[0])
 
     pileup_matrix = convert_aligned_reference_to_one_hot(alignments[0])
     reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment[0])
@@ -95,7 +129,6 @@ def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=
         x_repeat .squeeze()
 
     print()
-
     print(x_pileup.shape)
     print(y_pileup.shape)
     print(x_repeat.shape)
@@ -216,7 +249,7 @@ def plot_confusion(confusion_matrix):
     for i in range(x):
         for j in range(y):
             confusion = confusion_matrix[i,j]
-            pyplot.text(j, i, "%.3f"%confusion, va="center", ha="center")
+            pyplot.text(j, i, "%.0f"%confusion, va="center", ha="center")
 
     pyplot.imshow(confusion_matrix, cmap="viridis")
     pyplot.show()
@@ -232,9 +265,13 @@ def plot_repeat_confusion(total_repeat_confusion):
     n = max(x) + 1
     m = max(y) + 1
 
+    print(n, m)
+
     confusion_matrix = numpy.zeros([n,m])
 
     for x,y in total_repeat_confusion:
+        x = abs(x)
+        y = abs(y)
         confusion_matrix[x,y] += 1
 
     confusion_matrix = normalize_confusion_matrix(confusion_matrix)

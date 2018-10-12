@@ -1,6 +1,6 @@
 from handlers.FileManager import FileManager
 from handlers.DataLoader import DataLoader
-from modules.train_test_utils import plot_prediction
+from modules.train_test_utils import plot_prediction, ResultsHandler
 from models.SplitCnn import EncoderDecoder
 from matplotlib import pyplot
 from torch import nn
@@ -10,41 +10,14 @@ import torch
 import datetime
 
 
-class ResultsHandler:
-    def __init__(self):
-        self.datetime_string = '-'.join(list(map(str, datetime.datetime.now().timetuple()))[:-1])
-        self.subdirectory_name = "training_" + self.datetime_string
-
-        self.output_directory_name = "output/"
-        self.directory = path.join(self.output_directory_name, self.subdirectory_name)
-
-        self.n_checkpoints = 0
-
-        FileManager.ensure_directory_exists(self.directory)
-
-    def save_plot(self, losses):
-        loss_plot_filename = path.join(self.directory, "loss.png")
-
-        figure = pyplot.figure()
-        axes = pyplot.axes()
-        axes.plot(losses)
-        pyplot.savefig(loss_plot_filename)
-
-    def save_model(self, model):
-        self.n_checkpoints += 1
-
-        model_filename = path.join(self.directory, "model_checkpoint_%d" % self.n_checkpoints)
-        torch.save(model.state_dict(), model_filename)
-
-    def save_config(self, model):
-        pass
-
-
 def sequential_loss_CE(y_predict, y, loss_fn):
     # x shape = (n, 5, length)
     # y shape = (n, 5, length)
 
     n, c, l = y_predict.shape
+
+    # print(y_predict.shape)
+    # print(y.shape)
 
     # print(n,c,l)
 

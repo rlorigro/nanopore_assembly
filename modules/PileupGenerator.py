@@ -7,6 +7,9 @@ MAX_COVERAGE = 50
 SEQUENCE_LENGTH_CUTOFF_FACTOR = 3   # exclude aligned segments that exceed window_size by this multiple
 DEFAULT_MIN_MAP_QUALITY = 5
 
+DELETE_CHAR = "-"
+INSERT_CHAR = "*"
+
 
 class SegmentGrabber:
     def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
@@ -29,9 +32,14 @@ class SegmentGrabber:
         self.aligned_segments = defaultdict(list)
         self.qualities = defaultdict(list)
         self.cigars = defaultdict(list)
-        self.inserts = defaultdict(list)
 
-        self.insert_positions = set()
+        self.read_insert_lengths = defaultdict(dict)
+        self.positional_insert_lengths = dict()
+
+        self.insert_offsets = defaultdict(int)
+
+        print(self.start_position)
+        print(self.end_position)
 
     def get_read_segments(self):
         for r,read in enumerate(self.reads):
@@ -44,7 +52,67 @@ class SegmentGrabber:
             if r == self.max_coverage:
                 break
 
+        for read_id in self.aligned_segments:
+            print(''.join(self.aligned_segments[read_id]))
+            # print(''.join(self.cigars[read_id]))
+            # print()
+
+        self.add_insertion_padding()
+
+        for read_id in self.aligned_segments:
+            print(''.join(self.aligned_segments[read_id]))
+            # print(''.join(self.cigars[read_id]))
+            # print()
+
         return self.sequences
+
+    def add_insertion_padding(self):
+        print(self.start_position, self.end_position)
+        print(sorted(self.positional_insert_lengths.items()))
+
+        for read_id in self.aligned_segments:
+            for position in sorted(self.positional_insert_lengths):
+                segment_index = position - self.start_position + self.insert_offsets[read_id]
+                max_insert_length = self.positional_insert_lengths[position]
+
+                if read_id in self.read_insert_lengths:
+                    if position in sorted(self.read_insert_lengths[read_id]):
+                        # read has insert here
+                        read_insert_length = self.read_insert_lengths[read_id][position]
+                        segment_index += read_insert_length
+                        padding_length = max_insert_length - read_insert_length
+
+                    else:
+                        # read has insert... but not here
+                        padding_length = max_insert_length
+                else:
+                    # read has no inserts
+                    padding_length = max_insert_length
+
+                print(''.join(self.aligned_segments[read_id]))
+                print(''.join(self.cigars[read_id]))
+                print("position: ",position)
+                print("start: ", self.start_position)
+                print("padding: ", padding_length)
+                print("index: ", segment_index)
+
+                sequence = self.aligned_segments[read_id]
+                cigars = self.cigars[read_id]
+                padded_sequence = sequence[:segment_index] + [INSERT_CHAR]*padding_length + sequence[segment_index:]
+                padded_cigars = cigars[:segment_index] + [INSERT_CHAR]*padding_length + cigars[segment_index:]
+                self.aligned_segments[read_id] = padded_sequence
+                self.cigars[read_id] = padded_cigars
+
+                self.insert_offsets[read_id] += max_insert_length
+
+            print(''.join(self.aligned_segments[read_id]))
+
+    def update_positional_insert_lengths(self, position, length):
+        if position not in self.positional_insert_lengths:
+            self.positional_insert_lengths[position] = length
+        else:
+            previous_length = self.positional_insert_lengths[position]
+            self.positional_insert_lengths[position] = max(previous_length, length)
 
     def get_aligned_segment_from_read(self, read):
         """
@@ -94,7 +162,7 @@ class SegmentGrabber:
                                        cigar_code=cigar_code,
                                        length=length,
                                        alignment_position=read_alignment_start + ref_index,
-                                       read_sequence=read_sequence_segment,
+                                       read_segment=read_sequence_segment,
                                        read_id=read_id,
                                        completion_status=completion_status)
 
@@ -153,7 +221,7 @@ class SegmentGrabber:
 
         return True
 
-    def parse_delete(self, read_id, alignment_position, length, ref_sequence):
+    def parse_delete(self, read_id, read_index, alignment_position, length):
         """
         Process a cigar operation that is a delete
         :param alignment_position: Alignment position
@@ -164,32 +232,57 @@ class SegmentGrabber:
         This method updates the candidates dictionary.
         """
         # actual delete position starts one after the anchor
-        start = alignment_position + 1
+        read_complete = False
+        index = read_index
+        start = alignment_position
         stop = start + length
 
         for i in range(start, stop):
-            self.cigars[read_id][i] = ('.', MIN_DELETE_QUALITY)
-            # self._update_base_dictionary(read_id, i, '*', MIN_DELETE_QUALITY)
-            # increase the coverage
+            in_left_bound = i >= self.start_position
+            in_right_bound = i <= self.end_position
 
-        # record the delete where it first starts
-        self._update_delete_dictionary(read_id, alignment_position, allele)
-        self._update_read_allele_dictionary(read_id, alignment_position + 1, allele, DELETE_ALLELE, 60)
+            # update start position
+            if in_left_bound:
+                if read_id not in self.read_start_indices:
+                    self.read_start_indices[read_id] = index
+                    self.read_alignment_starts[read_id] = i
 
-    def parse_insert(self, read_index, read_id, alignment_position, length, read_sequence):
+            # update read
+            if in_left_bound and in_right_bound:
+                self.cigars[read_id].append("D")
+                self.aligned_segments[read_id].append(DELETE_CHAR)
+
+            # update end position
+            if in_right_bound:
+                self.read_end_indices[read_id] = index
+                self.read_alignment_ends[read_id] = i
+            else:
+                read_complete = True
+                break
+
+            index += 1
+
+        # # record the delete where it first starts
+        # self._update_delete_dictionary(read_id, alignment_position, allele)
+        # self._update_read_allele_dictionary(read_id, alignment_position + 1, allele, DELETE_ALLELE, 60)
+
+        return read_complete
+
+    def parse_insert(self, read_index, read_id, alignment_position, length, read_segment):
         """
         Process a cigar operation where there is an insert
         :param alignment_position: Position where the insert happened
-        :param read_sequence: The insert read sequence
+        :param read_segment: The insert read sequence
         :return:
 
         This method updates the candidates dictionary. Mostly by adding read IDs to the specific positions.
         """
         index = read_index
         read_complete = False
-        start = alignment_position
+        start = alignment_position + 1
         stop = start + length
 
+        segment_index = 0
         for i in range(start, stop):
             in_left_bound = i >= self.start_position
             in_right_bound = i <= self.end_position
@@ -200,6 +293,17 @@ class SegmentGrabber:
                     self.read_start_indices[read_id] = index
                     self.read_alignment_starts[read_id] = i
 
+            # update read
+            if in_left_bound and in_right_bound:
+                character = read_segment[segment_index]
+                self.cigars[read_id].append("I")
+                self.aligned_segments[read_id].append(character)
+
+                if segment_index == 0:
+                    position = start + segment_index - 1
+                    self.read_insert_lengths[read_id][position] = length
+                    self.update_positional_insert_lengths(position=position, length=length)
+
             # update end position
             if in_right_bound:
                 self.read_end_indices[read_id] = index
@@ -208,30 +312,27 @@ class SegmentGrabber:
                 read_complete = True
                 break
 
-            if in_left_bound and in_right_bound:
-                character = read_sequence[index]
-                self.aligned_segments[read_id].append(character)
-
             index += 1
+            segment_index += 1
 
         # ---------------------------------------------------------------------
-
-        # the allele is the anchor + what's being deleted
-        allele = self.reference_dictionary[alignment_position] + read_sequence
-
-        # record the insert where it first starts
-        self.mismatch_count[alignment_position] += 1
-        self._update_read_allele_dictionary(read_id, alignment_position + 1, allele, INSERT_ALLELE, max(qualities))
-        self._update_insert_dictionary(read_id, alignment_position, read_sequence, qualities)
+        # # the allele is the anchor + what's being deleted
+        # allele = self.reference_dictionary[alignment_position] + read_sequence
+        #
+        # # record the insert where it first starts
+        # self.mismatch_count[alignment_position] += 1
+        # self._update_read_allele_dictionary(read_id, alignment_position + 1, allele, INSERT_ALLELE, max(qualities))
+        # self._update_insert_dictionary(read_id, alignment_position, read_sequence, qualities)
 
         return read_complete
 
-    def parse_match(self, read_index, read_id, alignment_position, length, read_sequence):
+    def parse_match(self, read_index, read_id, alignment_position, length, read_segment):
         index = read_index
         read_complete = False
         start = alignment_position
         stop = start + length
 
+        segment_index = 0
         for i in range(start, stop):
             in_left_bound = i >= self.start_position
             in_right_bound = i <= self.end_position
@@ -242,6 +343,12 @@ class SegmentGrabber:
                     self.read_start_indices[read_id] = index
                     self.read_alignment_starts[read_id] = i
 
+            # update read
+            if in_left_bound and in_right_bound:
+                character = read_segment[segment_index]
+                self.cigars[read_id].append("M")
+                self.aligned_segments[read_id].append(character)
+
             # update end position
             if in_right_bound:
                 self.read_end_indices[read_id] = index
@@ -250,21 +357,21 @@ class SegmentGrabber:
                 read_complete = True
                 break
 
-            if in_left_bound and in_right_bound:
-                character = read_sequence[index]
-                self.aligned_segments[read_id].append(character)
+
+                # print(character)
 
             index += 1
+            segment_index += 1
 
         return read_complete
 
-    def parse_cigar_tuple(self, read_index, cigar_code, length, alignment_position, read_sequence, read_id, completion_status):
+    def parse_cigar_tuple(self, read_index, cigar_code, length, alignment_position, read_segment, read_id, completion_status):
         """
         Parse through a cigar operation to find possible candidate variant positions in the read
         :param cigar_code: Cigar operation code
         :param length: Length of the operation
         :param alignment_position: Alignment position corresponding to the reference
-        :param read_sequence: Read sequence
+        :param read_segment: Read sequence from the bounds of this cigar operation
         :return:
         cigar key map based on operation.
         details: http://pysam.readthedocs.io/en/latest/api.html#pysam.AlignedSegment.cigartuples
@@ -286,15 +393,15 @@ class SegmentGrabber:
                                                  read_id=read_id,
                                                  alignment_position=alignment_position,
                                                  length=length,
-                                                 read_sequence=read_sequence)
+                                                 read_segment=read_segment)
 
         elif cigar_code == 1:
             # insert
-            # completion_status = self.parse_insert(read_index=read_index,
-            #                                       read_id=read_id,
-            #                                       alignment_position=alignment_position,
-            #                                       length=length,
-            #                                       read_sequence=read_sequence)
+            completion_status = self.parse_insert(read_index=read_index,
+                                                  read_id=read_id,
+                                                  alignment_position=alignment_position,
+                                                  length=length,
+                                                  read_segment=read_segment)
 
             # alignment position is where the next alignment starts, for insert and delete this
             # position should be the anchor point hence we use a -1 to refer to the anchor point
@@ -302,11 +409,10 @@ class SegmentGrabber:
 
         elif cigar_code == 2 or cigar_code == 3:
             # delete or ref_skip
-            # completion_status = self.parse_delete(read_index=read_index,
-            #                                       read_id=read_id,
-            #                                       alignment_position=alignment_position,
-            #                                       length=length,
-            #                                       read_sequence=read_sequence)
+            completion_status = self.parse_delete(read_index=read_index,
+                                                  read_id=read_id,
+                                                  alignment_position=alignment_position,
+                                                  length=length)
 
             # alignment position is where the next alignment starts, for insert and delete this
             # position should be the anchor point hence we use a -1 to refer to the anchor point

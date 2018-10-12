@@ -1,11 +1,13 @@
 from matplotlib import pyplot
+from modules.pileup_utils import sequence_to_index
 import numpy
 import sys
 from scipy.misc import logsumexp
 
 numpy.set_printoptions(precision=3, linewidth=400, suppress=True)
 
-MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"
+# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"   # sharp, filtered
+MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"   # diffuse, unfiltered
 
 
 class RunlengthClassifier:
@@ -32,6 +34,22 @@ class RunlengthClassifier:
         matrix = matrix[1:, 1:]  # trim 0 columns (for now)
 
         return matrix
+
+    # def load_frequency_matrix_from_base_specific_matrices(self, path):
+    #     matrix_labels = ["a", "g", "t", "c"]
+    #     frequency_matrix = None
+    #
+    #     for base in matrix_labels:
+    #         matrix = numpy.load(path)[base.upper()]     # toggle for stupidity
+    #         matrix = matrix[1:, 1:]  # trim 0 columns (for now)
+    #
+    #         base_index = sequence_to_index[base.upper()] - 1
+    #         if frequency_matrix is None:
+    #             frequency_matrix = matrix
+    #
+    #
+    #     return base_frequency_matrices
+
 
     def plot_matrix(self, probability_matrix):
         axes = pyplot.axes()
@@ -169,6 +187,8 @@ class RunlengthClassifier:
         j_max = numpy.argmax(posterior)
 
         normalized_posterior = self.normalize_likelihoods(log_likelihood_y=posterior, max_index=j_max)
+
+        print(10**normalized_posterior)
 
         return normalized_posterior, j_max
 
