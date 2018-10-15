@@ -486,6 +486,37 @@ def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_co
     return base_matrix, repeat_matrix
 
 
+def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_coverage=True, numpy_type=numpy.float64):
+    if fixed_coverage:
+        n = MAX_COVERAGE
+    else:
+        n = len(alignments)
+    m = len(alignments[0])
+    c = len(index_to_sequence)
+
+    base_matrix = numpy.zeros([c,n,m], dtype=numpy_type)
+    repeat_matrix = numpy.zeros([1,n,m])
+
+    for n_index,alignment in enumerate(alignments):
+        repeat_index = 0
+
+        for m_index,character in enumerate(alignment):
+            c_index = sequence_to_index[character]
+            base_matrix[c_index,n_index,m_index] = 1
+
+            if character != "-":
+                repeat_matrix[0,n_index,m_index] = repeats[n_index][repeat_index]
+                repeat_index += 1
+
+    if base_matrix.ndim < 3:
+        base_matrix = base_matrix.reshape([c,n,m])
+
+    if repeat_matrix.ndim < 3:
+        repeat_matrix = repeat_matrix.reshape([1,n,m])
+
+    return base_matrix, repeat_matrix
+
+
 def convert_collapsed_alignments_to_matrix(alignments, character_counts, fixed_coverage=True, numpy_type=numpy.float64):
     """
     For a list of alignment strings, generate a matrix of encoded bases in float format from 0-1

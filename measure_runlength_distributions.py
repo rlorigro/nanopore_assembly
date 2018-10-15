@@ -237,9 +237,9 @@ def run():
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_celegans_chr1_2-12Mbp_2018-9-21"       # 10 million bases in human guppy
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_chr5_FULL_20Mbp_2018-9-24"             # chr5 full float encoded
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003279.8"  # chr1 one-hot
-    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_fixed_size2018-10-11-13-1-59-3-284"    # chr1 fixed size windows one-hot
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_fixed_size2018-10-11-13-1-59-3-284"    # chr1 fixed size windows one-hot
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored2018-10-11-11-20-29-3-284"    # chr1 windowed windows one-hot
-
+    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored_2018-10-12-13-38-4-4-285/NC_003279.8" # chr1 fixed size windows one-hot (repeat transitions only!)
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=data_path, file_extension=".npz")
 

@@ -120,7 +120,7 @@ def locate_repeats_in_anchored_windows(windows, repeat_positions):
         # print(position, length)
         # print(type(position), type(length))
 
-        matching_windows = window_interval_tree.find(start=position, stop=position+length)
+        matching_windows = window_interval_tree.find(start=position, stop=position+length-1)
 
         if len(matching_windows) > 1:
             split_repeats += 1
@@ -156,7 +156,8 @@ def main():
 
     fasta_handler = FastaHandler(reference_file_path)
 
-    chromosomal_window_path = "output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1"
+    # chromosomal_window_path = "output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1"   # kernel method
+    chromosomal_window_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_0_15072434_2018_10_12_10_58_56_199382"     # transition method
     chromosome_name = "NC_003279.8"
 
     chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
@@ -170,8 +171,8 @@ def main():
     split_counts_per_length, split_repeat_windows, unsplit_repeat_windows = \
         locate_repeats_in_anchored_windows(windows=windows, repeat_positions=long_repeat_positions)
 
-    # plot_split_ratios_per_length(split_counts_per_length)
-    plot_pileups_for_split_repeats(split_repeat_windows=unsplit_repeat_windows,
+    plot_split_ratios_per_length(split_counts_per_length)
+    plot_pileups_for_split_repeats(split_repeat_windows=split_repeat_windows,
                                    bam_file_path=bam_file_path,
                                    reference_file_path=reference_file_path,
                                    chromosome_name=chromosome_name)

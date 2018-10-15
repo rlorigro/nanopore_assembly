@@ -9,7 +9,7 @@ DEFAULT_MIN_MAP_QUALITY = 5
 
 
 class SegmentGrabber:
-    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads):
+    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads, padding=None, padding_end_offset=1):
         # candidate finder includes end position, so should the reference sequence
         self.chromosome_name = chromosome_name
         self.start_position = start_position
@@ -17,6 +17,8 @@ class SegmentGrabber:
         self.window_size = end_position - start_position
         self.ref_sequence = ref_sequence
         self.max_coverage = MAX_COVERAGE
+        self.padding = padding
+        self.padding_end_offset = padding_end_offset
 
         self.reads = reads
 
@@ -108,6 +110,15 @@ class SegmentGrabber:
 
                 # to simulate Paolo Carnevali's data, all reads should span the full region, match on start and end pos.
                 if segment_alignment_start == self.start_position and segment_alignment_end == self.end_position:
+                    if self.padding is not None and self.padding_end_offset is not None:
+                        # print(start_index - self.padding, end_index + self.padding + self.padding_end_offset)
+                        # print(start_index, end_index)
+                        # print(read_sequence[start_index - self.padding:end_index + self.padding + self.padding_end_offset + 1])
+                        # print(self.padding*" "+read_sequence[start_index:end_index + 1])
+
+                        start_index = start_index - self.padding
+                        end_index = end_index + self.padding + self.padding_end_offset
+
                     sequence = read_sequence[start_index:end_index + 1]
 
                     if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR*self.window_size:

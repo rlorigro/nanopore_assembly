@@ -18,17 +18,18 @@ class Encoder(nn.Module):
         self.leakyrelu = nn.LeakyReLU()
 
         self.n_channels_0_vertical = input_size
-        self.n_channels_1_vertical = 16
-        self.n_channels_2_vertical = 32
+        self.n_channels_1_vertical = input_size*2
+        self.n_channels_2_vertical = input_size*4
 
         self.n_channels_0_horizontal = input_size
-        self.n_channels_1_horizontal = 64
-        self.n_channels_2_horizontal = 128
+        self.n_channels_1_horizontal = input_size**2
+        self.n_channels_2_horizontal = input_size**3
 
         self.conv2d_1_vertical = nn.Conv2d(in_channels=self.n_channels_0_vertical,
                                            out_channels=self.n_channels_1_vertical,
                                            kernel_size=self.kernel_size_vertical,
-                                           padding=(1,0))
+                                           padding=(1,0),
+                                           groups=input_size)
 
         self.conv2d_2_vertical = nn.Conv2d(in_channels=self.n_channels_1_vertical,
                                            out_channels=self.n_channels_2_vertical,
@@ -38,7 +39,8 @@ class Encoder(nn.Module):
         self.conv2d_1_horizontal = nn.Conv2d(in_channels=self.n_channels_0_horizontal,
                                              out_channels=self.n_channels_1_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,2))
+                                             padding=(0,2),
+                                             groups=input_size)
 
         self.conv2d_2_horizontal = nn.Conv2d(in_channels=self.n_channels_1_horizontal,
                                              out_channels=self.n_channels_2_horizontal,
@@ -168,7 +170,7 @@ class EncoderDecoder(nn.Module):
 
         self.encoder = Encoder(input_size=input_size)
 
-        self.decoder = Decoder(input_size=8000,
+        self.decoder = Decoder(input_size=18550,
                                output_size=output_size,
                                hidden_size=hidden_size,
                                n_layers=n_layers,

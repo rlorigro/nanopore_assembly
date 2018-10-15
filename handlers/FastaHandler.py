@@ -58,3 +58,6 @@ class FastaHandler:
             print("ERROR IN REF FETCH: ", contig, site)
             error_val = 1
         return ret_val, error_val
+
+    def close(self):
+        self.fasta.close()

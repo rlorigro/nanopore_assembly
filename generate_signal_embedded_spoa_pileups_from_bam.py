@@ -8,6 +8,7 @@ from select_windows import WINDOW_SIZE, CDF_STEP_SIZE
 from modules.window_selection_utils import merge_windows
 from modules.pileup_utils import *
 from modules.alignment_utils import *
+from collections import defaultdict
 from multiprocessing import Pool
 import multiprocessing
 from matplotlib import pyplot
@@ -41,6 +42,20 @@ def get_current_timestamp():
 
     return datetime_string
 
+def read_kmer_means_as_dictionary(path):
+    kmer_means = dict()
+
+    with open(path, 'r') as file:
+        for l,line in enumerate(file):
+            if l > 0:   # ignore header
+                line = line.strip().split("\t")
+                kmer = line[0]
+                mean = float(line[1])
+
+                kmer_means[kmer] = (mean)
+
+    return kmer_means
+
 
 def get_alignments_by_sequence(alignments, sequence):
     """
@@ -63,7 +78,28 @@ def get_alignments_by_sequence(alignments, sequence):
     return query_alignments
 
 
-def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_start, pileup_end, include_ref=False):
+def get_kmer_signals(kmer_means, sequences):
+    k = 6   # assume constant
+    trimmed_sequences = list()
+    signal_sequences = list()
+
+    for sequence in sequences:
+        n_kmers = len(sequence) - k + 1
+
+        signal_sequence = list()
+        for i in range(n_kmers):
+            kmer = sequence[i:i+k]
+            mean_signal = kmer_means[kmer]
+
+            signal_sequence.append(mean_signal)
+
+        trimmed_sequences.append(sequence[2:-3])
+        signal_sequences.append(signal_sequence)
+
+    return signal_sequences, trimmed_sequences
+
+
+def get_aligned_segments(fasta_handler, bam_handler, kmer_means, chromosome_name, pileup_start, pileup_end, include_ref=False):
     """
     Get read segments from a pair of coordinates given that each read has an aligned match at the start and end
     coordinate
@@ -86,7 +122,9 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                      start_position=pileup_start,
                                      end_position=pileup_end,
                                      ref_sequence=ref_sequence,
-                                     reads=reads)
+                                     reads=reads,
+                                     padding=2,
+                                     padding_end_offset=1)
 
     # if a reference sequence is intended to be added to the pileup, then leave a space for it
     if include_ref:
@@ -370,16 +408,6 @@ def load_windows(path):
 
     return merged_windows
 
-# def load_windows(path):
-#     window_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
-#     windows = list()
-#
-#     positional_window_paths = list()
-#
-#     for window_path in window_paths:
-#         start = int(window_path.split("/")[-1].split("_")[0])
-#         windows.append([start, window_path])
-
 
 def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, output_dir, generate_from_vcf=False, runlength=False):
     """
@@ -428,15 +456,15 @@ def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromo
                           plot_results=False)
 
 
-def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
-    """
-    Run the pileup generator for a single specified window
-    :param bam_file_path:
-    :param reference_file_path:
-    :param chromosome_name:
-    :param window:
-    :return:
-    """
+# def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
+#     """
+#     Run the pileup generator for a single specified window
+#     :param bam_file_path:
+#     :param reference_file_path:
+#     :param chromosome_name:
+#     :param window:
+#     :return:
+#     """
     # bam_handler = BamHandler(bam_file_path)
     # fasta_handler = FastaHandler(reference_file_path)
     #
@@ -492,7 +520,7 @@ def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name
     #     sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
 
 
-def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, sort_sequences_by_length=False, reverse_sort=False, two_pass=False, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
+def generate_window_run_length_encoding(bam_file_path, reference_file_path, kmer_means, chromosome_name, window, output_dir, sort_sequences_by_length=False, reverse_sort=False, two_pass=False, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -505,14 +533,17 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
     fasta_handler = FastaHandler(reference_file_path)
 
     pileup_start = window[0]
-    pileup_end = window[1]      # add random variation here ?
+    pileup_end = window[1]
 
     ref_sequence, read_ids, sequences, reversal_statuses = get_aligned_segments(fasta_handler=fasta_handler,
                                                                                 bam_handler=bam_handler,
                                                                                 chromosome_name=chromosome_name,
                                                                                 pileup_start=pileup_start,
                                                                                 pileup_end=pileup_end,
-                                                                                include_ref=True)
+                                                                                include_ref=True,
+                                                                                kmer_means=kmer_means)
+
+    kmer_signals, sequences = get_kmer_signals(kmer_means=kmer_means, sequences=sequences)
 
     if sequences is None:
         return
@@ -544,6 +575,10 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
 
     reversal_matrix = convert_reversal_statuses_to_integer_matrix(reverse_statuses=reversal_statuses,
                                                                   pileup_matrix=pileup_matrix)
+
+    signal_matrix = convert_collapsed_alignments_to_one_hot_tensor(ref_alignment,
+                                                                   ref_repeats,
+                                                                   fixed_coverage=False)
 
     if plot_results:
         n_channels, height, width = pileup_matrix.shape
@@ -639,10 +674,6 @@ def encode_region_parallel(bam_file_path, reference_file_path, chromosome_name, 
 
     args_per_thread = list()
     for window in windows:
-        if window[0] > window[-1]:
-            print("WARNING: window excluded because invalid: ", window)
-            continue
-
         args = [bam_file_path, reference_file_path, chromosome_name, window, output_dir, sort_sequences_by_length, reverse_sort, two_pass, save_data, print_results, plot_results, counter, n_chunks]
         args_per_thread.append(args)
 
@@ -694,14 +725,17 @@ def genomic_run():
 
     fasta_handler = FastaHandler(reference_file_path)
 
-    chromosomal_window_paths = ["/home/ryan/code/nanopore_assembly/output/window_selection/NC_003284.9_1000000_16718942_2018_10_15_0_38_27_259250",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_1000000_19924180_2018_10_14_22_34_30_383603",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003282.8_1000000_16493829_2018_10_14_20_52_58_386000",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003281.10_1000000_12783801_2018_10_14_19_37_55_657683",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003280.10_1000000_14279421_2018_10_14_18_14_1_786141"]
-                                # "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205"]
+    # chromosomal_window_paths = ["output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1",
+                                # "output/window_selection/NC_003280.10_0_15279421_2018_10_1_21_25",
+                                # "output/window_selection/NC_003281.10_0_13783801_2018_10_1_22_40",
+                                # "output/window_selection/NC_003282.8_0_17493829_2018_10_1_23_51",
+                                # "output/window_selection/NC_003283.11_0_20924180_2018_10_2_1_22",
+                                # "output/window_selection/NC_003284.9_0_17718942_2018_10_2_3_10",
+                                # "output/window_selection/NC_001328.1_0_13794_2018_10_2_4_46"]
 
-    for path in reversed(chromosomal_window_paths):
+    chromosomal_window_paths = ["output/window_selection/NC_003283.11_0_20924180_2018_10_2_1_22"]
+
+    for path in chromosomal_window_paths:
         chromosome_name = "_".join(path.split("/")[-1].split("_")[0:2])
         print("STARTING", chromosome_name)
 
@@ -726,11 +760,13 @@ def run_parameter_comparison():
     # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
     bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
     reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    kmer_means_file_path = "/home/ryan/data/Nanopore/r9.4_180mv_450bps_6mer_template_median68pA.model"
+    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
     # -------------------------------------------------------------------------
 
     fasta_handler = FastaHandler(reference_file_path)
 
-    chromosomal_window_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_0_15072434_2018_10_12_10_58_56_199382"
+    chromosomal_window_path = "output/window_selection/NC_003279.8_0_15072434_2018_10_1_20_1"
     chromosome_name = "NC_003279.8"
 
     chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
@@ -755,22 +791,22 @@ def run_parameter_comparison():
                            reverse_sort=False,
                            two_pass=True)
 
-    # output_root_dir = "output/"
-    # instance_dir = "spoa_pileup_generation_fixed_size_" + get_current_timestamp()
-    # output_dir = os.path.join(output_root_dir, instance_dir)
-    #
-    # encode_region_parallel(bam_file_path=bam_file_path,
-    #                        reference_file_path=reference_file_path,
-    #                        chromosome_name=chromosome_name,
-    #                        region=region,
-    #                        window_size=20,
-    #                        output_dir=output_dir,
-    #                        runlength=runlength,
-    #                        max_threads=30,
-    #                        windows_path=None,
-    #                        sort_sequences_by_length=False,
-    #                        reverse_sort=False,
-    #                        two_pass=True)
+    output_root_dir = "output/"
+    instance_dir = "spoa_pileup_generation_fixed_size_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    encode_region_parallel(bam_file_path=bam_file_path,
+                           reference_file_path=reference_file_path,
+                           chromosome_name=chromosome_name,
+                           region=region,
+                           window_size=20,
+                           output_dir=output_dir,
+                           runlength=runlength,
+                           max_threads=30,
+                           windows_path=None,
+                           sort_sequences_by_length=False,
+                           reverse_sort=False,
+                           two_pass=True)
 
 
 def main():
@@ -800,7 +836,10 @@ def main():
     bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
     reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
     windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+    kmer_means_file_path = "/home/ryan/data/Nanopore/r9.4_180mv_450bps_6mer_template_median68pA.model"
     # -------------------------------------------------------------------------
+
+    kmer_means = read_kmer_means_as_dictionary(kmer_means_file_path)
 
     fasta_handler = FastaHandler(reference_file_path)
     contig_names = fasta_handler.get_contig_names()
@@ -832,19 +871,20 @@ def main():
     # window = [1004298, 1004298+109]
     # window = [10044514, 10044514+54]
     # window = [10037167, 10037167+82]
-    # window = [14952118-1, 14952118+13]
-    #
-    # generate_window_run_length_encoding(bam_file_path=bam_file_path,
-    #                                     reference_file_path=reference_file_path,
-    #                                     chromosome_name=chromosome_name,
-    #                                     window=window,
-    #                                     output_dir=output_dir,
-    #                                     sort_sequences_by_length=False,
-    #                                     reverse_sort=False,
-    #                                     two_pass=True,
-    #                                     plot_results=True,
-    #                                     print_results=True,
-    #                                     save_data=False)
+    window = [14952118-10, 14952118+13]
+
+    generate_window_run_length_encoding(bam_file_path=bam_file_path,
+                                        reference_file_path=reference_file_path,
+                                        chromosome_name=chromosome_name,
+                                        window=window,
+                                        output_dir=output_dir,
+                                        sort_sequences_by_length=False,
+                                        reverse_sort=False,
+                                        two_pass=True,
+                                        plot_results=True,
+                                        print_results=True,
+                                        save_data=False,
+                                        kmer_means=kmer_means)
 
     # ---- TEST region --------------------------------------------------------
 
@@ -893,6 +933,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    genomic_run()
+    main()
+    # genomic_run()
     # run_parameter_comparison()
