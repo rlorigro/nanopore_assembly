@@ -105,12 +105,12 @@ def get_runlengths_from_one_hot(x_pileup, x_repeat, y_repeat):
 
     consensus_caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
 
-    # consensus_repeats = consensus_caller.get_consensus_repeats_from_one_hot(repeat_matrix=x_repeat, pileup_matrix=x_pileup)
-    consensus_repeats = consensus_caller.get_repeats_from_one_hot(repeat_matrix=x_repeat)
+    consensus_repeats = consensus_caller.get_consensus_repeats_from_one_hot(repeat_matrix=x_repeat, pileup_matrix=x_pileup)
+    # consensus_repeats = consensus_caller.get_repeats_from_one_hot(repeat_matrix=x_repeat)
 
     for i in range(y_repeat.shape[-1]):
         # print(y_repeat.shape)
-        y = int(y_repeat[0,0,i])
+        y = int(y_repeat[0,0,i])    # 1 "coverage depth" and 1 channel
 
         # print(x_repeat[i])
         x = consensus_repeats[i]
@@ -239,7 +239,8 @@ def run():
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003279.8"  # chr1 one-hot
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_fixed_size2018-10-11-13-1-59-3-284"    # chr1 fixed size windows one-hot
     # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored2018-10-11-11-20-29-3-284"    # chr1 windowed windows one-hot
-    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored_2018-10-12-13-38-4-4-285/NC_003279.8" # chr1 fixed size windows one-hot (repeat transitions only!)
+    # data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_anchored_2018-10-12-13-38-4-4-285/NC_003279.8" # chr1 fixed size windows one-hot (repeat transitions only!)
+    data_path = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8" # chr1 filtered BAM celegans repeat transition windows
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=data_path, file_extension=".npz")
 

@@ -38,7 +38,7 @@ class JointClassifierTrainer:
 
         return_dict[p] = counts
 
-        print(p)
+        # print(p)
 
     def get_counts_from_tuples(self, paths, max_threads=24):
         print("Paths loaded: ", len(paths))

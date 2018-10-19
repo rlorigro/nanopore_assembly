@@ -1,7 +1,8 @@
 import sys
 from os import walk, path
 sys.path.append(path.dirname(sys.path[0]))
-from modules.pileup_utils import trim_empty_rows, sequence_to_float, sequence_to_index
+from modules.pileup_utils import trim_empty_rows, sequence_to_float, sequence_to_index, flatten_one_hot_tensor
+from modules.train_test_utils import plot_runlength_prediction
 from modules.ConsensusCaller import ConsensusCaller
 from matplotlib import pyplot
 import numpy
@@ -55,7 +56,8 @@ def get_all_file_paths_by_type(parent_directory_path, file_extension, sort=True)
 
 
 class DataLoader:
-    def __init__(self, file_paths, batch_size, parse_batches=True, use_gpu=False, convert_to_frequency=False, convert_repeats_to_counts=False):
+    def __init__(self, file_paths, batch_size, parse_batches=True, use_gpu=False, convert_to_frequency=False,
+                 convert_repeats_to_counts=False, convert_to_distributions=False, convert_to_binary=False):
         self.file_paths = file_paths
 
         self.path_iterator = iter(file_paths)
@@ -68,6 +70,8 @@ class DataLoader:
         self.parse_batches = parse_batches
         self.convert_to_frequency = convert_to_frequency
         self.convert_repeats_to_counts = convert_repeats_to_counts
+        self.convert_to_distributions = convert_to_distributions
+        self.convert_to_binary = convert_to_binary
 
         if self.use_gpu:
             print("USING GPU :)")
@@ -79,7 +83,6 @@ class DataLoader:
             self.x_dtype = torch.FloatTensor
             # y_dtype = torch.FloatTensor  # for MSE Loss or BCE loss
             self.y_dtype = torch.LongTensor      # for CE Loss
-
 
     def __len__(self):
         return self.n_files
@@ -96,6 +99,12 @@ class DataLoader:
         x_repeat = numpy.load(next_path)["x_repeat"]
         y_repeat = numpy.load(next_path)["y_repeat"]
         reversal = numpy.load(next_path)["reversal"]
+
+        if self.convert_to_distributions:
+            x_coverage, x_pileup, x_repeat = self.convert_pileup_to_distributions(x_pileup, x_repeat, reversal)
+
+        if self.convert_to_binary:
+            y_pileup = self.convert_pileup_target_to_binary(y_pileup)
 
         # add 3rd dimension
         x_pileup = numpy.expand_dims(x_pileup, axis=0)
@@ -125,23 +134,25 @@ class DataLoader:
         reversal_cache = list()
 
         while len(x_pileup_cache) < self.batch_size and self.files_loaded < self.n_files:
-            path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache = \
-                self.load_next_file(path_cache=path_cache,
-                                    x_pileup_cache=x_pileup_cache,
-                                    y_pileup_cache=y_pileup_cache,
-                                    x_repeat_cache=x_repeat_cache,
-                                    y_repeat_cache=y_repeat_cache,
-                                    reversal_cache=reversal_cache)
-
+            try:
+                path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache = \
+                    self.load_next_file(path_cache=path_cache,
+                                        x_pileup_cache=x_pileup_cache,
+                                        y_pileup_cache=y_pileup_cache,
+                                        x_repeat_cache=x_repeat_cache,
+                                        y_repeat_cache=y_repeat_cache,
+                                        reversal_cache=reversal_cache)
+            except ValueError as e:
+                print(e)
 
         return path_cache, x_pileup_cache, y_pileup_cache, x_repeat_cache, y_repeat_cache, reversal_cache
 
     def parse_batch(self, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch):
-        x_pileup_batch = torch.from_numpy(x_pileup_batch).type(self.x_dtype)
-        y_pileup_batch = torch.from_numpy(y_pileup_batch).type(self.y_dtype)
-        x_repeat_batch = torch.from_numpy(x_repeat_batch).type(self.x_dtype)
-        y_repeat_batch = torch.from_numpy(y_repeat_batch).type(self.y_dtype)
-        reversal_batch = torch.from_numpy(reversal_batch).type(self.x_dtype)
+        x_pileup_batch = torch.from_numpy(x_pileup_batch).type(self.x_dtype)    # + 1e-12  # offset to prevent 0 gradients
+        y_pileup_batch = torch.from_numpy(y_pileup_batch).type(self.y_dtype)    # + 1e-12  # offset to prevent 0 gradients
+        x_repeat_batch = torch.from_numpy(x_repeat_batch).type(self.x_dtype)    # + 1e-12  # offset to prevent 0 gradients
+        y_repeat_batch = torch.from_numpy(y_repeat_batch).type(self.y_dtype)    # + 1e-12  # offset to prevent 0 gradients
+        reversal_batch = torch.from_numpy(reversal_batch).type(self.x_dtype)    # + 1e-12  # offset to prevent 0 gradients
 
         return x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch
 
@@ -165,6 +176,70 @@ class DataLoader:
         x_batch = numpy.concatenate(frequency_matrices, axis=0)
 
         return x_batch
+
+    def convert_pileup_target_to_binary(self, y_pileup):
+        y_pileup = y_pileup[:1,:,:]
+
+        y_pileup = 1 - y_pileup
+
+        return y_pileup
+
+    @staticmethod
+    def convert_pileup_to_distributions(x_pileup, x_repeat, reversal):
+        if type(reversal) != numpy.bool:
+            reversal = reversal.astype(numpy.bool)
+
+        # print(x_pileup.shape)
+        # print(x_repeat.shape)
+        # print(reversal.shape)
+
+        n_channels, height, width = x_pileup.shape
+
+        # ---- character sums (split by strand direction) ----
+
+        reverse = numpy.repeat(reversal[numpy.newaxis,:,:], n_channels, axis=0)
+        forward = numpy.invert(reverse)
+
+        forward_characters = x_pileup*forward
+        reverse_characters = x_pileup*reverse
+
+        forward_sums = numpy.sum(forward_characters, axis=1)
+        reverse_sums = numpy.sum(reverse_characters, axis=1)[1:,:]
+
+        x_pileup_distribution = numpy.concatenate([forward_sums, reverse_sums], axis=0)
+
+        x_coverage = numpy.expand_dims(numpy.sum(x_pileup_distribution, axis=0), axis=0)
+
+        # ---- repeat distribution from 0-50 -----------------
+
+        x_repeat = x_repeat.reshape([height, width]).astype(numpy.int64)
+
+        # vectorized bincount via stackoverflow:
+        # https://stackoverflow.com/questions/46256279/bin-elements-per-row-vectorized-2d-bincount-for-numpy
+        N = 50 + 1
+        a_offs = x_repeat.T + numpy.arange(x_repeat.T.shape[0])[:, None]*N
+        x_repeat_distribution = numpy.bincount(a_offs.ravel(), minlength=x_repeat.T.shape[0]*N).reshape(-1, N).T
+
+
+        x_pileup_distribution = x_pileup_distribution.astype(numpy.float64) / x_coverage
+        x_repeat_distribution = x_repeat_distribution.astype(numpy.float64) / x_coverage
+        x_coverage = x_coverage.astype(numpy.float64)/1000
+
+        x_pileup_distribution = numpy.concatenate([x_coverage, x_pileup_distribution], axis=0)
+
+        x_pileup_distribution = numpy.expand_dims(x_pileup_distribution, axis=0)
+        x_repeat_distribution = numpy.expand_dims(x_repeat_distribution, axis=0)
+
+        # ratio = x_repeat_distribution.shape[0] / x_pileup_distribution.shape[0]
+        # ratio2 = x_coverage.shape[0] / x_pileup_distribution.shape[0]
+        # fig, axes = pyplot.subplots(nrows=3, gridspec_kw={'height_ratios': [ratio2, ratio, 1]})
+        # axes[2].imshow(x_pileup_distribution)
+        # axes[1].imshow(x_repeat_distribution)
+        # axes[0].imshow(x_coverage)
+        # pyplot.show()
+        # pyplot.close()
+
+        return x_coverage, x_pileup_distribution, x_repeat_distribution
 
     def convert_repeat_matrix_to_counts(self, x_pileup_batch, x_repeat_batch):
         caller = ConsensusCaller(sequence_to_float=sequence_to_float, sequence_to_index=sequence_to_index)
@@ -236,15 +311,15 @@ class DataLoader:
 
 
 if __name__ == "__main__":
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-9-4-12-26-1-1-247"
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8"
     file_paths = get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz")
 
-    data_loader = DataLoader(file_paths=file_paths, batch_size=1, parse_batches=False, convert_to_frequency=True)
+    data_loader = DataLoader(file_paths=file_paths, batch_size=1, parse_batches=False, convert_to_distributions=True, convert_to_binary=True)
 
-    for path_cache, x_pileup, y_pileup, x_repeat, y_repeat in data_loader:
+    for path_cache, x_pileup, y_pileup, x_repeat, y_repeat, reversal in data_loader:
         print(x_pileup.shape, y_pileup.shape, x_repeat.shape, y_repeat.shape)
 
-        plot_collapsed_encodings(pileup_matrix=x_pileup[0,:,:],
-                                 reference_matrix=y_pileup[0,:,:],
-                                 pileup_repeat_matrix=x_repeat[0,:,:],
-                                 reference_repeat_matrix=y_repeat[0,:,:])
+        plot_collapsed_encodings(pileup_matrix=flatten_one_hot_tensor(x_pileup[0,:,:]),
+                                 reference_matrix=flatten_one_hot_tensor(y_pileup[0,:,:]),
+                                 pileup_repeat_matrix=flatten_one_hot_tensor(x_repeat[0,:,:]),
+                                 reference_repeat_matrix=flatten_one_hot_tensor(y_repeat[0,:,:]))

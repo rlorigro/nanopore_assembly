@@ -1,5 +1,6 @@
 from models.JointClassifierTrainer import train_model, JointClassifierTrainer
 from modules.pileup_utils import sequence_to_float, sequence_to_index, index_to_sequence, get_joint_base_runlength_observations_vs_truth
+from modules.GapFilterer import GapFilterer
 from modules.ConsensusCaller import ConsensusCaller
 from handlers.DataLoaderRunlength import DataLoader
 from handlers.FileManager import FileManager
@@ -71,7 +72,67 @@ def load_base_frequency_matrices(path):
     return base_frequency_matrices
 
 
-def generate_training_data(data_loader, batch_size, consensus_caller, output_dir, filename_suffix):
+# def generate_training_data(data_loader, batch_size, consensus_caller, output_dir, filename_suffix):
+#     # datetime_string = FileManager.get_datetime_string()
+#     #
+#     # output_dir = os.path.join(output_dir, datetime_string)
+#     # filename = "joint_distribution_" + datetime_string
+#
+#     n_files = len(data_loader)
+#     all_training_tuples = list()
+#     i = 0
+#
+#     print("testing n windows: ", n_files)
+#
+#     for b, batch in enumerate(data_loader):
+#         paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+#
+#         # (n,h,w) shape
+#         batch_size, n_channels, height, width = x_pileup.shape
+#
+#         for n in range(batch_size):
+#             # input shape = (batch_size, n_channels, height, width)
+#             # example x_pileup_n shape: (1, 5, 44, 24)
+#             # example y_pileup_n shape: (1, 5, 1, 24)
+#             # example x_repeat_n shape: (1, 1, 44, 24)
+#             # example y_repeat_n shape: (1, 1, 1, 24)
+#
+#             x_pileup_n = x_pileup[n, :, :].reshape([n_channels, height, width])
+#             y_pileup_n = y_pileup[n, :, :].reshape([5, 1, width])
+#             x_repeat_n = x_repeat[n, :, :].reshape([1, height, width])
+#             y_repeat_n = y_repeat[n, :, :].reshape([1, width])
+#             reversal_n = reversal[n, :, :].reshape([1, height, width])
+#
+#             # print()
+#             # print(x_pileup_n.shape)
+#             # print(y_pileup_n.shape)
+#             # print(x_repeat_n.shape)
+#             # print(y_repeat_n.shape)
+#
+#             truths_vs_observations = get_joint_base_runlength_observations_vs_truth(x_pileup=x_pileup_n,
+#                                                                                     y_pileup=y_pileup_n,
+#                                                                                     x_repeat=x_repeat_n,
+#                                                                                     y_repeat=y_repeat_n,
+#                                                                                     reversal=reversal_n,
+#                                                                                     path=paths[0])
+#
+#             all_training_tuples.extend(truths_vs_observations)
+#
+#             if i % 1 == 0:
+#                 sys.stdout.write("\r " + str(round(i/n_files*100,3)) + "% completed")
+#
+#             if i % 10000 == 0 or i == n_files -1:
+#                 filename = "training_data_" + filename_suffix + "_" + str(i)
+#                 print("\nSAVING: ", os.path.join(output_dir, filename))
+#                 FileManager.save_object_pickle(output_dir=output_dir, filename=filename, object=all_training_tuples)
+#                 all_training_tuples = list()
+#
+#             i += 1
+#
+#     return output_dir
+
+
+def generate_training_data(data_loader, batch_size, consensus_caller, output_dir, filename_suffix, gap_filterer=None):
     # datetime_string = FileManager.get_datetime_string()
     #
     # output_dir = os.path.join(output_dir, datetime_string)
@@ -84,29 +145,36 @@ def generate_training_data(data_loader, batch_size, consensus_caller, output_dir
     print("testing n windows: ", n_files)
 
     for b, batch in enumerate(data_loader):
+        # sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/n_batches))
+
         paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+
+        # print()
+        # print("X PILEUP", x_pileup.shape)
+        # print("Y PILEUP", y_pileup.shape)
+        # print("X REPEAT", x_repeat.shape)
+        # print("Y REPEAT", y_repeat.shape)
+        # print("REVERSAL", reversal.shape)
+
+        if gap_filterer is not None:
+            batch = gap_filterer.filter_batch(batch, plot=False)
+            x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
 
         # (n,h,w) shape
         batch_size, n_channels, height, width = x_pileup.shape
 
         for n in range(batch_size):
             # input shape = (batch_size, n_channels, height, width)
-            # example x_pileup_n shape: (1, 5, 44, 24)
-            # example y_pileup_n shape: (1, 5, 1, 24)
-            # example x_repeat_n shape: (1, 1, 44, 24)
-            # example y_repeat_n shape: (1, 1, 1, 24)
+            # example x_pileup_n shape: (5, 44, 24)
+            # example y_pileup_n shape: (5, 1, 24)
+            # example x_repeat_n shape: (1, 44, 24)
+            # example y_repeat_n shape: (1, 1, 24)
 
             x_pileup_n = x_pileup[n, :, :].reshape([n_channels, height, width])
             y_pileup_n = y_pileup[n, :, :].reshape([5, 1, width])
             x_repeat_n = x_repeat[n, :, :].reshape([1, height, width])
             y_repeat_n = y_repeat[n, :, :].reshape([1, width])
             reversal_n = reversal[n, :, :].reshape([1, height, width])
-
-            # print()
-            # print(x_pileup_n.shape)
-            # print(y_pileup_n.shape)
-            # print(x_repeat_n.shape)
-            # print(y_repeat_n.shape)
 
             truths_vs_observations = get_joint_base_runlength_observations_vs_truth(x_pileup=x_pileup_n,
                                                                                     y_pileup=y_pileup_n,
@@ -148,46 +216,6 @@ def load_training_tuples(path, cutoff=sys.maxsize):
     return all_tuples
 
 
-def run_train_from_pileups():
-    max_threads = 30
-
-    # NC_003279.8         Caenorhabditis elegans chromosome I
-    # NC_003280.10     Caenorhabditis elegans chromosome II
-    # NC_003281.10     Caenorhabditis elegans chromosome III
-    # NC_003282.8         Caenorhabditis elegans chromosome IV
-    # NC_003283.11    Caenorhabditis elegans chromosome V
-    # NC_003284.9        Caenorhabditis elegans chromosome X
-    # NC_001328.1        Caenorhabditis elegans mitochondrion, complete genome
-
-    data_path = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003279.8",    # one hot, reversal encoded, chr1 c elegans full
-                "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003280.10",    # one hot, reversal encoded, chr2 c elegans full
-                "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003281.10",    # one hot, reversal encoded, chr3 c elegans full
-                "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003282.8",     # one hot, reversal encoded, chr4 c elegans full
-                "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003283.11",    # one hot, reversal encoded, chr5 c elegans full
-                "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003284.9"]     # one hot, reversal encoded, chrX c elegans full
-
-    args = list()
-    for path in data_path:
-        batch_size = 1
-
-        file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".npz")
-
-        data_loader = DataLoader(file_paths, batch_size=batch_size, parse_batches=False)
-
-        consensus_caller = ConsensusCaller(sequence_to_index=sequence_to_index, sequence_to_float=sequence_to_float)
-
-        output_dir = "output/joint_runlength_base_model/" + FileManager.get_datetime_string()
-
-        filename_suffix = path.split("/")[-1]
-        print(filename_suffix)
-
-        args.append([data_loader, batch_size, consensus_caller, output_dir, filename_suffix])
-
-    n_threads = min(len(args), max_threads)
-    with Pool(processes=n_threads) as pool:
-        pool.starmap(generate_training_data, args)
-
-
 def train_joint_model_from_tuples(tuples_path):
     training_tuples = load_training_tuples(tuples_path, cutoff=16)
 
@@ -216,6 +244,48 @@ def normalize_frequency_matrix(frequency_matrix, log_scale):
         probability_matrix = numpy.log10(probability_matrix)
 
     return probability_matrix
+
+
+def run_train_from_pileups():
+    max_threads = 30
+
+    # NC_003279.8         Caenorhabditis elegans chromosome I
+    # NC_003280.10     Caenorhabditis elegans chromosome II
+    # NC_003281.10     Caenorhabditis elegans chromosome III
+    # NC_003282.8         Caenorhabditis elegans chromosome IV
+    # NC_003283.11    Caenorhabditis elegans chromosome V
+    # NC_003284.9        Caenorhabditis elegans chromosome X
+    # NC_001328.1        Caenorhabditis elegans mitochondrion, complete genome
+
+    data_path = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8",
+                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003280.10",
+                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003281.10",
+                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003282.8",
+                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003283.11",
+                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003284.9"]
+
+    args = list()
+    for path in data_path:
+        gap_filterer = GapFilterer()
+
+        batch_size = 1
+
+        file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".npz")
+
+        data_loader = DataLoader(file_paths, batch_size=batch_size, parse_batches=False)
+
+        consensus_caller = ConsensusCaller(sequence_to_index=sequence_to_index, sequence_to_float=sequence_to_float)
+
+        output_dir = "output/joint_runlength_base_model/" + FileManager.get_datetime_string()
+
+        filename_suffix = path.split("/")[-1]
+        print(filename_suffix)
+
+        args.append([data_loader, batch_size, consensus_caller, output_dir, filename_suffix, gap_filterer])
+
+    n_threads = min(len(args), max_threads)
+    with Pool(processes=n_threads) as pool:
+        pool.starmap(generate_training_data, args)
 
 
 def run_joint_frequency_matrix_generation_from_pickle():
@@ -266,27 +336,37 @@ def run_joint_frequency_matrix_generation_from_pickle():
         pyplot.close()
 
 
-def run_base_frequency_matrix_generation_from_pickle(filter_mismatch=False):
+def run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False):
     max_runlength = 50
 
-    path = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_2_16_52"
-    paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
+    directories = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_11_560358",
+                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_12_855103",
+                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_9_946240",
+                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_7_713553",
+                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_6_593646",
+                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_8_668369"]
+
+    all_paths = list()
+    for dir in directories:
+        paths = FileManager.get_all_file_paths_by_type(parent_directory_path=dir, file_extension=".pkl")
+        all_paths.extend(paths)
 
     frequency_matrices = defaultdict(lambda: numpy.zeros([max_runlength+1, max_runlength+1])) # include 0 as a possible runlength
 
-    cutoff = 8
-    for p,path in enumerate(paths):
+    print("loaded paths: ", len(all_paths))
+    cutoff = sys.maxsize
+    for p,path in enumerate(all_paths):
         with open(path, 'rb') as pickle_file:
             print(p)
 
             tuples = pickle.load(pickle_file)
 
             for tuple in tuples:
-                observed = tuple[0]
-                true = tuple[1]
+                observed_tuple = tuple[0]
+                true_tuple = tuple[1]
 
-                observed_base, observed_length = observed
-                true_base, true_length = true
+                observed_base, observed_length = observed_tuple
+                true_base, true_length = true_tuple
 
                 if filter_mismatch:
                     if observed_base != true_base:
@@ -306,18 +386,19 @@ def run_base_frequency_matrix_generation_from_pickle(filter_mismatch=False):
     filename = "runlength_frequency_matrices_per_base_" + FileManager.get_datetime_string()
 
     save_numpy_matrices(output_dir=output_dir, filename=filename, matrices=frequency_matrices)
+
     # frequency_matrices = load_base_frequency_matrices(os.path.join(output_dir,filename+".npz"))
     #
     # plot_frequency_matrices(frequency_matrices)
 
 
 def run_batch_training_from_tuples():
-    chr_paths = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_33_156698",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_34_558893",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_35_795050",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_37_409932",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_39_376950",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_9_15_3_41_28347"]
+    chr_paths = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_11_560358",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_12_855103",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_9_946240",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_7_713553",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_6_593646",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_8_668369"]
 
     trainer = JointClassifierTrainer()
 
@@ -357,9 +438,9 @@ def run_batch_training_from_tuples():
 
 
 if __name__ == "__main__":
-    # run_base_frequency_matrix_generation_from_pickle(filter_mismatch=True)
-    # run_train_from_pileups()
-    run_batch_training_from_tuples()
+    # run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False)
+    run_train_from_pileups()
+    # run_batch_training_from_tuples()
 
     # path = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018-9-20-14-21-6.npz"
     #

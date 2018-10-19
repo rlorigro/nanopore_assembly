@@ -4,6 +4,7 @@ from handlers.VcfHandler import VCFFileProcessor
 from handlers.FastaHandler import FastaHandler
 from handlers.BamHandler import BamHandler
 from handlers.TsvHandler import TsvHandler
+from handlers.FastaWriter import FastaWriter
 from select_windows import WINDOW_SIZE, CDF_STEP_SIZE
 from modules.window_selection_utils import merge_windows
 from modules.pileup_utils import *
@@ -492,7 +493,10 @@ def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name
     #     sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
 
 
-def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, sort_sequences_by_length=False, reverse_sort=False, two_pass=False, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
+def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir,
+                                        sort_sequences_by_length=False, reverse_sort=False, two_pass=False,
+                                        save_data=True, print_results=False, plot_results=False, counter=None,
+                                        n_chunks=None, save_to_fasta=False):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -513,6 +517,20 @@ def generate_window_run_length_encoding(bam_file_path, reference_file_path, chro
                                                                                 pileup_start=pileup_start,
                                                                                 pileup_end=pileup_end,
                                                                                 include_ref=True)
+
+    if save_to_fasta:
+        FileManager.ensure_directory_exists(output_dir)
+        sequences_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1])]) + ".fasta"
+        sequences_output_path = os.path.join(output_dir,sequences_output_filename)
+        fasta_writer = FastaWriter(sequences_output_path)
+        fasta_writer.write_sequences(sequences)
+
+        ref_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1]), "ref"]) + ".fasta"
+        ref_output_path = os.path.join(output_dir,ref_output_filename)
+        fasta_writer = FastaWriter(ref_output_path)
+        fasta_writer.write_sequences([ref_sequence])
+
+        print("saving sequences as fasta: ", sequences_output_path, ref_output_path)
 
     if sequences is None:
         return
@@ -825,26 +843,52 @@ def main():
     # window = [800000, 800020]
 
     # test sites for misalignment
-    # window = [10029532, 10029532+83]
-    # window = [10031827, 10031827+34]
-    # window = [10039004, 10039004+25]
-    # window = [10040234, 10040234+61]
-    # window = [1004298, 1004298+109]
-    # window = [10044514, 10044514+54]
-    # window = [10037167, 10037167+82]
-    # window = [14952118-1, 14952118+13]
+    # windows = [[10029532, 10029532+83],
+    #           [10031827, 10031827+34],
+    #           [10039004, 10039004+25],
+    #           [10040234, 10040234+61],
+    #           [1004298, 1004298+109],
+    #           [10044514, 10044514+54],
+    #           [10037167, 10037167+82],
+    #           [14952118-5, 14952118+20]]
     #
-    # generate_window_run_length_encoding(bam_file_path=bam_file_path,
-    #                                     reference_file_path=reference_file_path,
-    #                                     chromosome_name=chromosome_name,
-    #                                     window=window,
-    #                                     output_dir=output_dir,
-    #                                     sort_sequences_by_length=False,
-    #                                     reverse_sort=False,
-    #                                     two_pass=True,
-    #                                     plot_results=True,
-    #                                     print_results=True,
-    #                                     save_data=False)
+    # for window in windows:
+    #     generate_window_run_length_encoding(bam_file_path=bam_file_path,
+    #                                         reference_file_path=reference_file_path,
+    #                                         chromosome_name=chromosome_name,
+    #                                         window=window,
+    #                                         output_dir=output_dir,
+    #                                         sort_sequences_by_length=False,
+    #                                         reverse_sort=False,
+    #                                         two_pass=True,
+    #                                         plot_results=False,
+    #                                         print_results=True,
+    #                                         save_data=False,
+    #                                         save_to_fasta=True)
+
+    # ---- generate random windows ---------------------------------------------
+
+    import random
+
+    windows = load_windows("/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205")
+
+    for i in range(20):
+        window = random.choice(windows)
+
+        print("GENERATING WINDOW: ", window)
+
+        generate_window_run_length_encoding(bam_file_path=bam_file_path,
+                                            reference_file_path=reference_file_path,
+                                            chromosome_name=chromosome_name,
+                                            window=window,
+                                            output_dir=output_dir,
+                                            sort_sequences_by_length=False,
+                                            reverse_sort=False,
+                                            two_pass=True,
+                                            plot_results=False,
+                                            print_results=True,
+                                            save_data=False,
+                                            save_to_fasta=True)
 
     # ---- TEST region --------------------------------------------------------
 
@@ -893,6 +937,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    genomic_run()
+    main()
+    # genomic_run()
     # run_parameter_comparison()

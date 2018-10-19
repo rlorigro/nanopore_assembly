@@ -9,7 +9,7 @@ COVERAGE = 50
 
 
 class RnnDecoder(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layers, output_size, dropout_rate):
+    def __init__(self, input_size, hidden_size, n_layers, output_size, dropout_rate, use_sigmoid=False):
         super(RnnDecoder, self).__init__()
 
         self.rnn_input_size = input_size
@@ -29,8 +29,14 @@ class RnnDecoder(nn.Module):
         self.output_linear = torch.nn.Linear(hidden_size*self.n_directions, output_size)
         self.leakyrelu = torch.nn.LeakyReLU()
 
+        self.use_sigmoid = use_sigmoid
+        self.sigmoid = torch.nn.Sigmoid()
+
     def output_fcn(self, x):
         x = self.output_linear(x)
+
+        if self.use_sigmoid:
+            x = self.sigmoid(x)
 
         return x
 
@@ -47,7 +53,8 @@ class RnnDecoder(nn.Module):
             x_i = x_i.view(batch_size, hidden, 1)
             x_i = x_i.permute([0,2,1])
 
-            x_i = self.output_linear(x_i)
+            x_i = self.output_fcn(x_i)
+
             outputs.append(x_i)
 
         x = torch.cat(outputs, dim=1)
@@ -74,7 +81,7 @@ class RnnDecoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size, n_layers, dropout_rate):
+    def __init__(self, input_size, output_size, hidden_size, n_layers, dropout_rate, use_sigmoid=False):
         super(Decoder, self).__init__()
 
         self.input_size = input_size
@@ -85,10 +92,15 @@ class Decoder(nn.Module):
                                   hidden_size=hidden_size,
                                   n_layers=n_layers,
                                   dropout_rate=dropout_rate,
-                                  output_size=output_size)
+                                  output_size=output_size,
+                                  use_sigmoid=use_sigmoid)
 
     def forward(self, x):
         # x = self.encoder(x)
         output = self.decoder(x)
 
         return output
+
+
+
+

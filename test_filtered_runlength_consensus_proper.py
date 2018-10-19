@@ -1,11 +1,11 @@
 from modules.train_test_utils import *
-from modules.pileup_utils import *
+from modules.GapFilterer import GapFilterer
 from handlers.FileManager import FileManager
 from handlers.DataLoaderRunlength import DataLoader
 from modules.ConsensusCaller import *
 from matplotlib import pyplot
 import torch
-
+from collections import Counter
 
 def sequential_loss_CE(y_predict, y, loss_fn):
     # x shape = (n, 5, length)
@@ -52,17 +52,27 @@ def batch_sequential_confusion(y_predict, y):
     return confusion
 
 
-def sequential_confusion(y_predict, y):
+def sequential_confusion(y_predict, y, argmax=True):
     # x shape = (5, length)
     # y shape = (5, length)
 
-    n_classes, length = y_predict.shape
+    if argmax:
+        n_classes, length = y_predict.shape
 
-    confusion = numpy.zeros([n_classes,n_classes])
+        y_target = torch.argmax(y, dim=0)
+        y_predict = torch.argmax(y_predict, dim=0)
+
+        confusion = numpy.zeros([n_classes, n_classes])
+
+    else:
+        length = y.shape[0]
+
+        y_target = torch.argmax(y, dim=0).squeeze()
+
+        confusion = numpy.zeros([5, 5])
+
+
     mismatches = list()
-
-    y_target = torch.argmax(y, dim=0)
-    y_predict = torch.argmax(y_predict, dim=0)
 
     for l in range(length):
         target_index = y_target[l]
@@ -121,24 +131,46 @@ def sequential_repeat_confusion(y_predict, y):
     return confusion
 
 
-def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
-    # total_sequence_confusion = None
+def test_consensus(consensus_caller, data_loader, n_batches, gap_filterer=None, plot_mismatches=False):
+    total_sequence_confusion = None
     total_expanded_confusion = None
     total_repeat_confusion = list()
 
     for b, batch in enumerate(data_loader):
-        # sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/len(data_loader)))
+        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/n_batches))
 
-        paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+        paths, x_pileup, y_pileup_unfiltered, x_repeat, y_repeat_unfiltered, reversal = batch
+
+        # print()
+        # print("X PILEUP", x_pileup.shape)
+        # print("Y PILEUP", y_pileup.shape)
+        # print("X REPEAT", x_repeat.shape)
+        # print("Y REPEAT", y_repeat.shape)
+        # print("REVERSAL", reversal.shape)
+
+        if gap_filterer is not None:
+
+            batch = gap_filterer.filter_batch(batch)
+
+            x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+
+        # x_pileup_n = x_pileup[0,:,:,:]
+        # y_pileup_n = y_pileup[0,:,:,:]
+        # x_repeat_n = x_repeat[0,:,:,:]
+        # y_repeat_n = y_repeat[0,:,:,:]
+        # reversal_n = reversal[0,:,:]
 
         # (n,h,w) shape
         batch_size, n_channels, height, width = x_pileup.shape
+        batch_size, n_channels_unfiltered, height_unfiltered, width_unfiltered = y_pileup_unfiltered.shape
 
         # print()
         # print("X PILEUP",x_pileup.shape)
         # print("Y PILEUP",y_pileup.shape)
+        # print("Y PILEUP",y_pileup_unfiltered.shape)
         # print("X REPEAT",x_repeat.shape)
         # print("Y REPEAT",y_repeat.shape)
+        # print("Y REPEAT",y_repeat_unfiltered.shape)
 
         for n in range(batch_size):
             # input shape = (batch_size, n_channels, height, width)
@@ -147,10 +179,28 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
             # example x_repeat_n shape: (1, 1, 44, 24)
             # example y_repeat_n shape: (1, 1, 1, 24)
 
-            x_pileup_n = x_pileup[n,:,:].reshape([n_channels,height,width])
-            y_pileup_n = y_pileup[n,:,:].reshape([5,1,width])
-            x_repeat_n = x_repeat[n,:,:].reshape([1,height,width])
-            y_repeat_n = y_repeat[n,:,:].reshape([width])
+            x_pileup_n = x_pileup[n,:,:,:]
+            y_pileup_n = y_pileup[n,:,:,:]
+            y_pileup_unfiltered_n = y_pileup_unfiltered[n,:,:,:]
+            x_repeat_n = x_repeat[n,:,:,:]
+            y_repeat_n = y_repeat[n,:,:,:]
+            y_repeat_unfiltered_n = y_repeat_unfiltered[n,:,:,:]
+
+            # print()
+            # print("X PILEUP", x_pileup_n.shape)
+            # print("Y PILEUP", y_pileup_n.shape)
+            # print("Y PILEUP", y_pileup_unfiltered_n.shape)
+            # print("X REPEAT", x_repeat_n.shape)
+            # print("Y REPEAT", y_repeat_n.shape)
+            # print("Y REPEAT", y_repeat_unfiltered_n.shape)
+
+            x_pileup_n = x_pileup_n.reshape([n_channels, height, width])
+            y_pileup_n = y_pileup_n.reshape([n_channels, 1, width])
+            y_pileup_unfiltered_n = y_pileup_unfiltered_n.reshape([n_channels, 1, width_unfiltered])
+
+            x_repeat_n = x_repeat_n.reshape([height, width])
+            y_repeat_n = y_repeat_n.reshape([width])
+            y_repeat_unfiltered_n = y_repeat_unfiltered_n.reshape([width_unfiltered])
 
             # print()
             # print(x_pileup_n.shape)
@@ -158,27 +208,23 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
             # print(x_repeat_n.shape)
             # print(y_repeat_n.shape)
 
-            # remove padding
-            # x_pileup_n = trim_empty_rows(x_pileup_n, background_value=sequence_to_float["-"])
-            # x_repeat_n = trim_empty_rows(x_repeat_n, background_value=sequence_to_float["-"])
-
             # use consensus caller on bases and repeats independently
-            y_pileup_predict, y_repeat_predict = consensus_caller.call_joint_consensus_as_integers(pileup=x_pileup_n,
-                                                                                                   repeat=x_repeat_n,
-                                                                                                   reversal=reversal)
+            y_pileup_predict = consensus_caller.call_consensus_as_index_from_one_hot(x_pileup_n)
+            y_pileup_target = consensus_caller.call_consensus_as_index_from_one_hot(y_pileup_unfiltered_n)
 
-            y_pileup_target = consensus_caller.call_consensus_as_index_from_one_hot(y_pileup_n)
+            # y_pileup_index = consensus_caller.call_consensus_as_index_from_one_hot(y_pileup_n)
+            # print(y_pileup_predict)
+            # print(y_pileup_index)
 
             if y_pileup_predict is None:
                 print("ERROR: incorrect dimensions for pileup:")
                 print(paths[0])
                 continue
 
-            # print()
-            # print(y_pileup_predict.shape)
-            # print(y_repeat_predict.shape)
-            # print(y_pileup_target.shape)
-            # print(y_repeat_n.shape)
+            y_repeat_predict = \
+                consensus_caller.call_columnar_repeat_consensus_from_integer_pileup(repeat_matrix=x_repeat_n,
+                                                                                    consensus_indices=y_pileup_predict,
+                                                                                    use_model=True)
 
             # decode as string to compare with non-runlength version
             expanded_consensus_string = \
@@ -189,14 +235,10 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
             # decode as string to compare with non-runlength version
             expanded_reference_string = \
                 consensus_caller.expand_collapsed_consensus_as_string(consensus_indices=y_pileup_target,
-                                                                      repeat_consensus_integers=y_repeat_n,
+                                                                      repeat_consensus_integers=y_repeat_unfiltered_n,
                                                                       ignore_spaces=True)
-
-            # print(expanded_consensus_string)
-            # print(expanded_reference_string)
-            #
-
             print()
+            # realign strings to each other and convert to one hot
             y_pileup_predict_expanded, y_pileup_expanded, predict_string, target_string = \
                 realign_consensus_to_reference(consensus_sequence=expanded_consensus_string,
                                                ref_sequence=expanded_reference_string,
@@ -204,18 +246,19 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
                                                return_strings=True)
 
             counts = Counter(predict_string) + Counter(target_string)
-            print(counts)
+            # print(counts)
 
             if counts['-'] > 5:
-                print(paths[0])
+                # print(paths[0])
 
-                y_repeat_predict_n = y_repeat_predict.reshape([1, y_repeat_predict.shape[0]])
-                x_repeat_n_flat = x_repeat_n.reshape([height, width])
+                y_pileup_predict_flat = y_pileup_predict.reshape([1, y_pileup_predict.shape[0]])
+                y_repeat_predict_flat = y_repeat_predict.reshape([1, y_repeat_predict.shape[0]])
 
                 x_pileup_n_flat = flatten_one_hot_tensor(x_pileup_n)
                 y_pileup_n_flat = flatten_one_hot_tensor(y_pileup_n)
+                y_pileup_predict_flat = flatten_one_hot_tensor(y_pileup_predict)
 
-                plot_runlength_prediction(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n_flat, y_repeat=y_repeat_predict_n)
+                # plot_runlength_prediction(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n, y_repeat=y_repeat_predict_flat)
 
             # if numpy.any(y_repeat_predict != y_repeat_n):
             #     print(y_repeat_n)
@@ -234,33 +277,28 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
             expanded_confusion, _ = sequential_confusion(y_predict=y_pileup_predict_expanded, y=y_pileup_expanded)
 
-            # y_pileup_predict = torch.FloatTensor(y_pileup_predict)
-            # y_pileup_n = torch.FloatTensor(y_pileup_n)
+            y_pileup_predict = torch.LongTensor(y_pileup_predict)
+            y_pileup_n = torch.LongTensor(y_pileup_n)
 
-            # sequence_confusion, mismatches = sequential_confusion(y_predict=y_pileup_predict,
-            #                                                                  y=y_pileup_n)
+            # print(y_pileup_predict)
+
+            sequence_confusion, mismatches = sequential_confusion(y_predict=y_pileup_predict,
+                                                                  y=y_pileup_n,
+                                                                  argmax=False)
 
             repeat_confusion = sequential_repeat_confusion(y_predict=y_repeat_predict, y=y_repeat_n)
 
             total_repeat_confusion.extend(repeat_confusion)
 
             if total_expanded_confusion is None:
-                # total_sequence_confusion = sequence_confusion
+                total_sequence_confusion = sequence_confusion
                 total_expanded_confusion = expanded_confusion
             else:
-                # total_sequence_confusion += sequence_confusion
+                print(total_sequence_confusion)
+                total_sequence_confusion += sequence_confusion
                 total_expanded_confusion += expanded_confusion
 
-            # y_pileup_predict = y_pileup_predict.reshape([1, y_pileup_predict.shape[0]])
-            # y_repeat_predict = y_repeat_predict.reshape([1, y_repeat_predict.shape[0]])
-            #
-            # x_pileup_n_flat = flatten_one_hot_tensor(x_pileup_n)
-            # y_pileup_n_flat = flatten_one_hot_tensor(y_pileup_n)
-            # y_pileup_predict_flat = flatten_one_hot_tensor(y_pileup_predict)
-
-            # plot_runlength_prediction(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n, y_repeat=y_repeat_predict)
-
-        if b > 500:
+        if b == n_batches:
             break
     print()
 
@@ -271,27 +309,27 @@ def test_consensus(consensus_caller, data_loader, plot_mismatches=False):
 
     print("Total accuracy", accuracy)
 
-    # plot_confusion(total_sequence_confusion)
+    plot_confusion(total_sequence_confusion)
     plot_confusion(total_expanded_confusion)
     plot_repeat_confusion(total_repeat_confusion)
 
 
 def run():
-    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-2-10-43-22-1-275/NC_003282.8"  # one-hot with anchors and reversal matrix Chr4
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8"  # one hot with anchors and reversal matrix chr1
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8"  # one-hot with anchors and reversal matrix chr1 celegans
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     # Training parameters
     batch_size_train = 1
-    checkpoint_interval = 300
+    n_batches = 1000
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train, parse_batches=False)
+    gap_filterer = GapFilterer(threshold=0.007)
 
     consensus_caller = ConsensusCaller(sequence_to_index, sequence_to_float)
 
     print(len(data_loader))
-    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, plot_mismatches=False)
+    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, n_batches=n_batches, gap_filterer=gap_filterer, plot_mismatches=False)
 
 
 if __name__ == "__main__":

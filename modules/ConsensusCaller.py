@@ -345,7 +345,7 @@ class ConsensusCaller:
 
             if use_model:
                 normalized_y_log_likelihoods, column_repeat_consensus = \
-                    self.runlength_classifier.predict(x=repeats, base_encoding=pileup_column_consensus)
+                    self.runlength_classifier.predict(x=repeats) #, base_encoding=pileup_column_consensus)
             else:
                 column_repeat_consensus = self.mode(repeats)
 

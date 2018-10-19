@@ -243,21 +243,21 @@ def get_joint_base_runlength_observations_vs_truth(x_pileup, x_repeat, y_pileup,
             else:
                 observations_vs_truths.append(observation_vs_truth)
 
-
-            # if observed_base == "C" and observed_repeat == 4 and true_repeat == 16:
+            # if (observed_base == "C" or observed_base == "G") and observed_repeat < 5 and true_repeat > 11:
+            #     print(observed_base, true_base, observed_repeat, true_repeat)
             #     DEBUG_WEIRD_IMAGE = True
 
-    # if DEBUG_WEIRD_IMAGE:
-    #     print(path)
-    #     x_pileup_flat = flatten_one_hot_tensor(x_pileup)
-    #     y_pileup_flat = flatten_one_hot_tensor(y_pileup)
-    #     plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
-    #                                        x_repeat=x_repeat.squeeze(),
-    #                                        y_pileup=y_pileup_flat,
-    #                                        y_repeat=y_repeat,
-    #                                        reversal=reversal.squeeze(),
-    #                                        show_reversal=False,
-    #                                        label=True)
+    if DEBUG_WEIRD_IMAGE:
+        print(path)
+        x_pileup_flat = flatten_one_hot_tensor(x_pileup)
+        y_pileup_flat = flatten_one_hot_tensor(y_pileup)
+        plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
+                                           x_repeat=x_repeat.squeeze(),
+                                           y_pileup=y_pileup_flat,
+                                           y_repeat=y_repeat,
+                                           reversal=reversal.squeeze(),
+                                           show_reversal=False,
+                                           label=True)
 
     # if width > 500:
     #     x_pileup_flat = flatten_one_hot_tensor(x_pileup)

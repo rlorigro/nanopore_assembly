@@ -59,7 +59,7 @@ def calculate_accuracy_from_confusion(matrix, exclude_gaps=False):
     return accuracy
 
 
-def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_alignment=False):
+def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_alignment=False, return_strings=False):
     alignments, ref_alignment = get_spoa_alignment(sequences=[consensus_sequence], ref_sequence=ref_sequence, two_pass=False)
     # ref_alignment = [ref_alignment]
 
@@ -70,7 +70,10 @@ def realign_consensus_to_reference(consensus_sequence, ref_sequence, print_align
     pileup_matrix = convert_aligned_reference_to_one_hot(alignments[0])
     reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment[0])
 
-    return pileup_matrix, reference_matrix
+    if return_strings:
+        return pileup_matrix, reference_matrix, alignments[0], ref_alignment[0]
+    else:
+        return pileup_matrix, reference_matrix
 
 
 def normalize_confusion_matrix(confusion_matrix):
@@ -108,7 +111,7 @@ def label_repeat_encoding_plot(matrix, axis):
             axis.text(j,i,str(int(value)), ha="center", va="center", fontsize=6)
 
 
-def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=None, title="", squeeze=False):
+def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, show_plot=True, save_path=None, title="", squeeze=False):
     if type(x_pileup) == torch.Tensor:
         x_pileup = x_pileup.data.numpy()
 
@@ -139,16 +142,14 @@ def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=
     x_repeat_ratio = x_repeat.shape[-2]/y_pileup.shape[-2]
     y_repeat_ratio = y_repeat.shape[-2]/y_pileup.shape[-2]
 
-    fig, axes = pyplot.subplots(nrows=4, gridspec_kw={'height_ratios': [y_pileup_ratio,
-                                                                        x_pileup_ratio,
-                                                                        y_repeat_ratio,
-                                                                        x_repeat_ratio]})
+    height_ratios = [y_pileup_ratio, x_pileup_ratio, y_repeat_ratio, x_repeat_ratio]
+
+    fig, axes = pyplot.subplots(nrows=4, gridspec_kw={'height_ratios': height_ratios})
 
     label_pileup_encoding_plot(matrix=y_pileup, axis=axes[0])
     label_pileup_encoding_plot(matrix=x_pileup, axis=axes[1])
     label_repeat_encoding_plot(matrix=y_repeat, axis=axes[2])
     label_repeat_encoding_plot(matrix=x_repeat, axis=axes[3])
-
 
     axes[0].imshow(y_pileup)
     axes[1].imshow(x_pileup)
@@ -162,11 +163,14 @@ def plot_runlength_prediction(x_pileup, x_repeat, y_pileup, y_repeat, save_path=
 
     axes[0].set_title(title)
 
-    if save_path is not None:
+    if not save_path is None:
         pyplot.savefig(save_path)
     else:
         pyplot.show()
-        pyplot.close()
+
+    pyplot.close()
+
+    return axes, height_ratios
 
 
 def plot_prediction(x, y, y_predict, save_path=None, title="", squeeze=False):
@@ -234,6 +238,28 @@ def plot_consensus_prediction(x, y, y_predict, save_path=None, title=""):
     else:
         pyplot.show()
         pyplot.close()
+
+
+def plot_binary_confusion(confusion_matrix):
+    x,y = confusion_matrix.shape
+
+    axes = pyplot.axes()
+    axes.set_ylabel("True class")
+    axes.set_xlabel("Predicted class")
+
+    axes.set_xticks([0,1])
+    axes.set_yticks([0,1])
+
+    axes.set_xticklabels(["Gap","Not Gap"])
+    axes.set_yticklabels(["Gap","Not Gap"])
+
+    for i in range(x):
+        for j in range(y):
+            confusion = confusion_matrix[i,j]
+            pyplot.text(j, i, "%.0f"%confusion, va="center", ha="center")
+
+    pyplot.imshow(confusion_matrix, cmap="viridis")
+    pyplot.show()
 
 
 def plot_confusion(confusion_matrix):

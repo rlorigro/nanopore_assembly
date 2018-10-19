@@ -312,7 +312,6 @@ def run():
     model = EncoderDecoder(hidden_size=hidden_size, input_size=input_channels, output_size=output_size, n_layers=n_layers, dropout_rate=dropout_rate)
     results_handler = ResultsHandler()
 
-
     model.load_state_dict(torch.load(model_state_path))
 
     # for alignment/pileup operations + conversions

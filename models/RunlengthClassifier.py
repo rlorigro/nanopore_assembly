@@ -7,7 +7,7 @@ from scipy.misc import logsumexp
 numpy.set_printoptions(precision=3, linewidth=400, suppress=True)
 
 # MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"   # sharp, filtered
-MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_probability_matrix_celegans_chr5_full_2018-9-25.npz"   # diffuse, unfiltered
+MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-10-15-16-45-27.npz"   # diffuse, unfiltered
 
 
 class RunlengthClassifier:
@@ -31,7 +31,7 @@ class RunlengthClassifier:
 
     def load_frequency_matrix(self, path):
         matrix = numpy.load(MATRIX_PATH)['a']
-        matrix = matrix[1:, 1:]  # trim 0 columns (for now)
+        # matrix = matrix[1:, 1:]  # trim 0 columns (for now)
 
         return matrix
 
@@ -49,7 +49,6 @@ class RunlengthClassifier:
     #
     #
     #     return base_frequency_matrices
-
 
     def plot_matrix(self, probability_matrix):
         axes = pyplot.axes()
@@ -188,7 +187,7 @@ class RunlengthClassifier:
 
         normalized_posterior = self.normalize_likelihoods(log_likelihood_y=posterior, max_index=j_max)
 
-        print(10**normalized_posterior)
+        # print(10**normalized_posterior)
 
         return normalized_posterior, j_max
 
