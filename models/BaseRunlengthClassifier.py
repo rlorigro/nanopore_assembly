@@ -6,10 +6,12 @@ import numpy
 from modules.pileup_utils import sequence_to_index, float_to_index, sequence_to_float
 from scipy.misc import logsumexp
 
-numpy.set_printoptions(precision=3, linewidth=400, suppress=True)
+numpy.set_printoptions(precision=9, linewidth=sys.maxsize, suppress=True, threshold=sys.maxsize)
 
-# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-9-25-13-42-30.npz"   # sharp, filtered
-MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018_10_16_12_55_47_584211.npz"     # diffuse, unfiltered
+# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/output/runlength_frequency_matrix/runlength_probability_matrix_2018-9-25-13-42-30.npz"   # sharp, filtered celegans
+# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018_10_16_12_55_47_584211.npz"     # diffuse, unfiltered celegans
+# MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018_10_22_11_52_33_936778.npz"        # RNN filtered gaps celegans
+MATRIX_PATH = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018_11_13_9_50_5_890425.npz"  # E coli
 
 
 class RunlengthClassifier:
@@ -22,10 +24,13 @@ class RunlengthClassifier:
     def __init__(self, path, log_scale=True):
         self.log_scale = log_scale
 
+        self.pseudocount = 20
+
         self.base_frequency_matrices = self.load_base_frequency_matrices(path)    # redundant storage to troubleshoot
         self.probability_matrices = self.normalize_frequency_matrices(self.base_frequency_matrices,
                                                                       log_scale=log_scale,
-                                                                      pseudocount=10)
+                                                                      pseudocount=self.pseudocount,
+                                                                      diagonal_pseudocount=self.pseudocount)
         # self.prior_vectors = self.get_prior_vector(base_frequency_matrices, log_scale=log_scale)
 
         self.y_maxes = [matrix.shape[0] for matrix in self.probability_matrices]
@@ -57,16 +62,23 @@ class RunlengthClassifier:
 
         return base_frequency_matrices
 
-    def normalize_frequency_matrices(self, frequency_matrices, log_scale, pseudocount=0):
+    def normalize_frequency_matrices(self, frequency_matrices, log_scale, pseudocount=0, diagonal_pseudocount=0):
         normalized_frequency_matrices = list()
+        matrix_labels = ["a", "g", "t", "c"]
 
-        for frequency_matrix in frequency_matrices:
+        for f,frequency_matrix in enumerate(frequency_matrices):
             frequency_matrix += pseudocount
+            diagonal_mask = numpy.eye(frequency_matrix.shape[0], frequency_matrix.shape[1], dtype=numpy.bool)
+            frequency_matrix[diagonal_mask] += diagonal_pseudocount
+
             normalized_frequencies = self.normalize_frequency_matrix(frequency_matrix=frequency_matrix,
                                                                      log_scale=log_scale)
             normalized_frequency_matrices.append(normalized_frequencies)
 
-            # self.plot_matrix(normalized_frequencies)
+            self.plot_matrix(normalized_frequencies)
+
+            # print(matrix_labels[f].upper())
+            # print(normalized_frequencies)
 
         return normalized_frequency_matrices
 

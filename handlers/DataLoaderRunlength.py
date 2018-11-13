@@ -94,6 +94,8 @@ class DataLoader:
         """
         next_path = next(self.path_iterator)
 
+        # print(next_path)
+
         x_pileup = numpy.load(next_path)["x_pileup"]
         y_pileup = numpy.load(next_path)["y_pileup"]
         x_repeat = numpy.load(next_path)["x_repeat"]
@@ -220,7 +222,6 @@ class DataLoader:
         a_offs = x_repeat.T + numpy.arange(x_repeat.T.shape[0])[:, None]*N
         x_repeat_distribution = numpy.bincount(a_offs.ravel(), minlength=x_repeat.T.shape[0]*N).reshape(-1, N).T
 
-
         x_pileup_distribution = x_pileup_distribution.astype(numpy.float64) / x_coverage
         x_repeat_distribution = x_repeat_distribution.astype(numpy.float64) / x_coverage
         x_coverage = x_coverage.astype(numpy.float64)/1000
@@ -294,19 +295,19 @@ class DataLoader:
                     self.parse_batch(x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch)
 
         else:
+            # reset dataloader iterator
             self.__init__(file_paths=self.file_paths,
                           batch_size=self.batch_size,
                           parse_batches=self.parse_batches,
                           use_gpu=self.use_gpu,
                           convert_to_frequency=self.convert_to_frequency)
 
+            # end epoch
             raise StopIteration
 
         return path_cache, x_pileup_batch, y_pileup_batch, x_repeat_batch, y_repeat_batch, reversal_batch
 
     def __iter__(self):
-        self.load_batch()
-
         return self
 
 

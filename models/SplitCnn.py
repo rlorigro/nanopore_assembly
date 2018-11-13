@@ -13,17 +13,30 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.kernel_size_vertical = (3,1)
-        self.kernel_size_horizontal = (1,5)
+        self.kernel_size_horizontal = (1,3)
 
         self.leakyrelu = nn.LeakyReLU()
 
         self.n_channels_0_vertical = input_size
         self.n_channels_1_vertical = input_size*2
         self.n_channels_2_vertical = input_size*4
+        self.n_channels_3_vertical = input_size*8
+        # self.n_channels_4_vertical = input_size*16
 
         self.n_channels_0_horizontal = input_size
-        self.n_channels_1_horizontal = input_size**2
-        self.n_channels_2_horizontal = input_size**3
+        self.n_channels_1_horizontal = input_size*4
+        self.n_channels_2_horizontal = input_size*8
+        self.n_channels_3_horizontal = input_size*16
+
+        print(self.n_channels_0_vertical)
+        print(self.n_channels_1_vertical)
+        print(self.n_channels_2_vertical)
+        print(self.n_channels_3_vertical)
+        # print(self.n_channels_4_vertical)
+        print(self.n_channels_0_horizontal)
+        print(self.n_channels_1_horizontal)
+        print(self.n_channels_2_horizontal)
+        print(self.n_channels_3_horizontal)
 
         self.conv2d_1_vertical = nn.Conv2d(in_channels=self.n_channels_0_vertical,
                                            out_channels=self.n_channels_1_vertical,
@@ -36,16 +49,31 @@ class Encoder(nn.Module):
                                            kernel_size=self.kernel_size_vertical,
                                            padding=(1,0))
 
+        self.conv2d_3_vertical = nn.Conv2d(in_channels=self.n_channels_2_vertical,
+                                           out_channels=self.n_channels_3_vertical,
+                                           kernel_size=self.kernel_size_vertical,
+                                           padding=(1,0))
+
+        # self.conv2d_4_vertical = nn.Conv2d(in_channels=self.n_channels_3_vertical,
+        #                                    out_channels=self.n_channels_4_vertical,
+        #                                    kernel_size=self.kernel_size_vertical,
+        #                                    padding=(1,0))
+
         self.conv2d_1_horizontal = nn.Conv2d(in_channels=self.n_channels_0_horizontal,
                                              out_channels=self.n_channels_1_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,2),
+                                             padding=(0,1),
                                              groups=input_size)
 
         self.conv2d_2_horizontal = nn.Conv2d(in_channels=self.n_channels_1_horizontal,
                                              out_channels=self.n_channels_2_horizontal,
                                              kernel_size=self.kernel_size_horizontal,
-                                             padding=(0,2))
+                                             padding=(0,1))
+
+        self.conv2d_3_horizontal = nn.Conv2d(in_channels=self.n_channels_2_horizontal,
+                                             out_channels=self.n_channels_3_horizontal,
+                                             kernel_size=self.kernel_size_horizontal,
+                                             padding=(0,1))
 
     def vertical_convolution(self, x):
         # expected convolution input shape = (batch, channel, H, W)
@@ -58,6 +86,12 @@ class Encoder(nn.Module):
         x = self.conv2d_2_vertical(x)
         x = self.leakyrelu(x)
 
+        x = self.conv2d_3_vertical(x)
+        x = self.leakyrelu(x)
+
+        # x = self.conv2d_4_vertical(x)
+        # x = self.leakyrelu(x)
+
         return x
 
     def horizontal_convolution(self, x):
@@ -69,6 +103,9 @@ class Encoder(nn.Module):
 
         # [1, 3, 50, 30]
         x = self.conv2d_2_horizontal(x)
+        x = self.leakyrelu(x)
+
+        x = self.conv2d_3_horizontal(x)
         x = self.leakyrelu(x)
 
         return x
@@ -170,7 +207,7 @@ class EncoderDecoder(nn.Module):
 
         self.encoder = Encoder(input_size=input_size)
 
-        self.decoder = Decoder(input_size=18550,
+        self.decoder = Decoder(input_size=8400,
                                output_size=output_size,
                                hidden_size=hidden_size,
                                n_layers=n_layers,

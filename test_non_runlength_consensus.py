@@ -137,8 +137,6 @@ def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=Fal
     total_repeat_confusion = list()
 
     for b, batch in enumerate(data_loader):
-        print(b)
-
         sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/n_batches))
 
         paths, x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
@@ -161,8 +159,6 @@ def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=Fal
 
             x_pileup_n = x_pileup[n,:,:].reshape([n_channels,height,width])
             y_pileup_n = y_pileup[n,:,:].reshape([5,1,width])
-            x_repeat_n = x_repeat[n,:,:].reshape([height,width])
-            y_repeat_n = y_repeat[n,:,:].reshape([width])
 
             # print()
             # print(x_pileup_n.shape)
@@ -174,76 +170,26 @@ def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=Fal
             y_pileup_predict = consensus_caller.call_consensus_as_index_from_one_hot(x_pileup_n)
             y_pileup_target = consensus_caller.call_consensus_as_index_from_one_hot(y_pileup_n)
 
-            # y_pileup_index = consensus_caller.call_consensus_as_index_from_one_hot(y_pileup_n)
             # print(y_pileup_predict)
-            # print(y_pileup_index)
+            # print(y_pileup_target)
 
             if y_pileup_predict is None:
                 print("ERROR: incorrect dimensions for pileup:")
                 print(paths[0])
                 continue
 
-            y_repeat_predict = \
-                consensus_caller.call_columnar_repeat_consensus_from_integer_pileup(repeat_matrix=x_repeat_n,
-                                                                                    consensus_indices=y_pileup_predict,
-                                                                                    use_model=True)
-
-            # decode as string to compare with non-runlength version
-            expanded_consensus_string = \
-                consensus_caller.expand_collapsed_consensus_as_string(consensus_indices=y_pileup_predict,
-                                                                      repeat_consensus_integers=y_repeat_predict,
-                                                                      ignore_spaces=True)
-
-            # decode as string to compare with non-runlength version
-            expanded_reference_string = \
-                consensus_caller.expand_collapsed_consensus_as_string(consensus_indices=y_pileup_target,
-                                                                      repeat_consensus_integers=y_repeat_n,
-                                                                      ignore_spaces=True)
+            expanded_consensus_string = consensus_caller.decode_index_to_string(y_pileup_predict, ignore_gaps=True)
+            expanded_reference_string = consensus_caller.decode_index_to_string(y_pileup_target, ignore_gaps=True)
 
             print()
-            # realign strings to each other and convert to one hot
             y_pileup_predict_expanded, y_pileup_expanded, predict_string, target_string = \
                 realign_consensus_to_reference(consensus_sequence=expanded_consensus_string,
                                                ref_sequence=expanded_reference_string,
                                                print_alignment=True,
                                                return_strings=True)
 
-            counts = Counter(predict_string) + Counter(target_string)
-            # print(counts)
-
-            if counts['-'] > -1:
-                # print(paths[0])
-
-                print()
-                print("X PILEUP",x_pileup.shape)
-                print("Y PILEUP",y_pileup.shape)
-                print("X REPEAT",x_repeat.shape)
-                print("Y REPEAT",y_repeat.shape)
-
-                y_repeat_predict_flat = y_repeat_predict.reshape([1, y_repeat_predict.shape[0]])
-                y_repeat_flat = y_repeat.reshape([1, y_repeat.shape[-1]])
-
-                x_pileup_n_flat = flatten_one_hot_tensor(x_pileup_n)
-                y_pileup_n_flat = flatten_one_hot_tensor(y_pileup_n)
-                y_pileup_predict_flat = flatten_one_hot_tensor(y_pileup_predict)/10
-
-                height = 30
-                x_pileup_n_flat = x_pileup_n_flat[:height, :]
-                x_repeat_n = x_repeat_n[:height, :]
-
-                plot_runlength_prediction_vs_truth(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n, y_repeat=y_repeat_flat, y_pileup_predict=y_pileup_predict_flat, y_repeat_predict=y_repeat_predict_flat)
-
-            # if numpy.any(y_repeat_predict != y_repeat_n):
-            #     print(y_repeat_n)
-            #     print(y_repeat_predict)
-            #     # y_pileup_predict = y_pileup_predict.reshape([1, y_pileup_predict.shape[0]])
-            #     y_repeat_predict_reshaped = y_repeat_predict.reshape([1, y_repeat_predict.shape[0]])
-            #
-            #     x_pileup_n_flat = flatten_one_hot_tensor(x_pileup_n)
-            #     y_pileup_n_flat = flatten_one_hot_tensor(y_pileup_n)
-            #     # y_pileup_predict_flat = flatten_one_hot_tensor(y_pileup_predict)
-            #
-            #     plot_runlength_prediction(x_pileup=x_pileup_n_flat, y_pileup=y_pileup_n_flat, x_repeat=x_repeat_n, y_repeat=y_repeat_predict_reshaped)
+            # print(expanded_consensus_string)
+            # print(expanded_reference_string)
 
             y_pileup_predict_expanded = torch.FloatTensor(y_pileup_predict_expanded)
             y_pileup_expanded = torch.FloatTensor(y_pileup_expanded)
@@ -258,10 +204,6 @@ def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=Fal
             sequence_confusion, mismatches = sequential_confusion(y_predict=y_pileup_predict,
                                                                   y=y_pileup_n,
                                                                   argmax=False)
-
-            repeat_confusion = sequential_repeat_confusion(y_predict=y_repeat_predict, y=y_repeat_n)
-
-            total_repeat_confusion.extend(repeat_confusion)
 
             if total_expanded_confusion is None:
                 total_sequence_confusion = sequence_confusion
@@ -283,24 +225,16 @@ def test_consensus(consensus_caller, data_loader, n_batches, plot_mismatches=Fal
 
     plot_confusion(total_sequence_confusion)
     plot_confusion(total_expanded_confusion)
-    plot_repeat_confusion(total_repeat_confusion)
 
 
 def run():
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8"  # one-hot with anchors and reversal matrix chr1 celegans
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-11-7-12-23-24-2-311/NC_003279.8"  # one-hot with anchors and reversal matrix chr1 celegans
 
-    # file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
-
-    file_paths = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_9699291_matrix.npz",
-                  "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_4172039_matrix.npz",
-                  "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_4552073_matrix.npz",
-                  "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_7332035_matrix.npz",
-                  "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_12807084_matrix.npz",
-                  "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8/NC_003279.8_7773028_matrix.npz"]
+    file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 
     # Training parameters
     batch_size_train = 1
-    n_batches = 500
+    n_batches = 5000
 
     data_loader = DataLoader(file_paths=file_paths, batch_size=batch_size_train, parse_batches=False)
 

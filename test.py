@@ -2,7 +2,7 @@ from handlers.FileManager import FileManager
 from modules.pileup_utils import trim_empty_rows
 from handlers.DataLoader import DataLoader
 from modules.ConsensusCaller import *
-from modules.train_test_utils import realign_consensus_to_reference
+from modules.train_test_utils import realign_consensus_to_reference, calculate_accuracy_from_confusion
 from matplotlib import pyplot
 import torch
 
@@ -71,7 +71,7 @@ def plot_confusion(confusion_matrix):
     for i in range(x):
         for j in range(y):
             confusion = confusion_matrix[i,j]
-            pyplot.text(j, i, "%.3f"%confusion, va="center", ha="center")   # indexes are so confusing
+            pyplot.text(j, i, "%.0f" % confusion, va="center", ha="center")   # indexes are so confusing
 
     pyplot.imshow(confusion_matrix, cmap="viridis")
     pyplot.show()
@@ -183,12 +183,15 @@ def test(model, data_loader):
     plot_confusion(total_confusion)
 
 
-def test_consensus(consensus_caller, data_loader):
+def test_consensus(consensus_caller, data_loader, n_batches=None):
+    if n_batches is None:
+        n_batches = len(data_loader)
+
     total_confusion = None
     total_realigned_confusion = None
 
     for b, batch in enumerate(data_loader):
-        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/len(data_loader)))
+        sys.stdout.write("\r %.2f%% COMPLETED  " % (100*b/n_batches))
 
         paths, x, y = batch
 
@@ -240,16 +243,23 @@ def test_consensus(consensus_caller, data_loader):
                 total_confusion += confusion
                 total_realigned_confusion += realigned_confusion
 
+        if b == n_batches:
+            break
+
     print()
 
     plot_confusion(total_confusion)
     plot_confusion(total_realigned_confusion)
 
-    total_confusion = normalize_confusion_matrix(total_confusion)
-    total_realigned_confusion = normalize_confusion_matrix(total_realigned_confusion)
+    # total_confusion = normalize_confusion_matrix(total_confusion)
+    # total_realigned_confusion = normalize_confusion_matrix(total_realigned_confusion)
+    #
+    # plot_confusion(total_confusion)
+    # plot_confusion(total_realigned_confusion)
 
-    plot_confusion(total_confusion)
-    plot_confusion(total_realigned_confusion)
+    accuracy = calculate_accuracy_from_confusion(total_realigned_confusion)
+
+    print("Total accuracy", accuracy)
 
 
 def run():
@@ -274,6 +284,7 @@ def run():
 
     # Training parameters
     batch_size_train = 1
+    n_batches = 5000
 
     checkpoint_interval = 300
 
@@ -286,8 +297,8 @@ def run():
 
     # test(model=model, data_loader=data_loader)
 
-    print(len(data_loader))
-    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader)
+    print(n_batches, len(data_loader))
+    test_consensus(consensus_caller=consensus_caller, data_loader=data_loader, n_batches=n_batches)
 
 
 if __name__ == "__main__":

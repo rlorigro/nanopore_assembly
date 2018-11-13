@@ -331,7 +331,8 @@ def train(model, data_loader, optimizer, input_channels, n_batches, results_hand
 
 
 def run():
-    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003283.11"     # one-hot with anchors and reversal matrix Chr5 filtered 2820
+    # directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003283.11"     # one-hot with anchors and reversal matrix Chr5 filtered 2820
+    directory = "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-11-12-14-8-24-0-316/gi"     # one-hot with anchors and reversal matrix E. Coli
 
     file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=directory, file_extension=".npz", sort=False)
 

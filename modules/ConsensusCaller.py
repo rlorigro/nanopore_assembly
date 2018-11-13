@@ -345,7 +345,7 @@ class ConsensusCaller:
 
             if use_model:
                 normalized_y_log_likelihoods, column_repeat_consensus = \
-                    self.runlength_classifier.predict(x=repeats) #, base_encoding=pileup_column_consensus)
+                    self.runlength_classifier.predict(x=repeats, character_index=pileup_column_consensus)
             else:
                 column_repeat_consensus = self.mode(repeats)
 
@@ -453,7 +453,6 @@ class ConsensusCaller:
             repeats.append(repeat_column.squeeze())
 
         return repeats
-
 
     def get_consensus_repeats(self, repeat_matrix, pileup_matrix, consensus_encoding):
         """
@@ -608,18 +607,23 @@ class ConsensusCaller:
 
         return encoding
 
-    def decode_index_to_string(self, index_vector):
+    def decode_index_to_string(self, index_vector, ignore_gaps=False):
         characters = list()
         for i in range(index_vector.shape[0]):
             index = int(index_vector[i])
 
             character = index_to_sequence[index]
 
-            characters.append(character)
+            if ignore_gaps:
+                if character != "-":
+                    characters.append(character)
+            else:
+                characters.append(character)
 
         consensus_string = ''.join(characters)
 
         return consensus_string
+
 
 def test_consensus_caller():
     alignments = [["0",  "TTTG--T--TG-C-------T-GCTATCG-----CC----G--T"],

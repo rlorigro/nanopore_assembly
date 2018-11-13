@@ -11,6 +11,7 @@ from modules.pileup_utils import *
 from modules.alignment_utils import *
 from multiprocessing import Pool
 import multiprocessing
+import random
 from matplotlib import pyplot
 from datetime import datetime
 from tqdm import tqdm
@@ -64,7 +65,7 @@ def get_alignments_by_sequence(alignments, sequence):
     return query_alignments
 
 
-def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_start, pileup_end, include_ref=False):
+def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_start, pileup_end, include_ref=False, exclude_loose_ends=True):
     """
     Get read segments from a pair of coordinates given that each read has an aligned match at the start and end
     coordinate
@@ -83,11 +84,15 @@ def get_aligned_segments(fasta_handler, bam_handler, chromosome_name, pileup_sta
                                   start=pileup_start,
                                   stop=pileup_end)
 
+    # for read in reads:
+    #     print(read.query_name[:10], read.query_length)
+
     segment_grabber = SegmentGrabber(chromosome_name=chromosome_name,
                                      start_position=pileup_start,
                                      end_position=pileup_end,
                                      ref_sequence=ref_sequence,
-                                     reads=reads)
+                                     reads=reads,
+                                     exclude_loose_ends=exclude_loose_ends)
 
     # if a reference sequence is intended to be added to the pileup, then leave a space for it
     if include_ref:
@@ -382,54 +387,54 @@ def load_windows(path):
 #         windows.append([start, window_path])
 
 
-def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, output_dir, generate_from_vcf=False, runlength=False):
-    """
-    Generate pileups from BAM data, and collapse sequences to have no explicitly repeated characters. Additionally
-    encode a repeat channel that describes the number of repeats observed per base.
-    :param bam_file_path:
-    :param reference_file_path:
-    :param vcf_path:
-    :param chromosome_name:
-    :param start_position:
-    :param end_position:
-    :return:
-    """
-    if runlength:
-        encode_window = generate_window_run_length_encoding
-    else:
-        encode_window = generate_window_encoding
+# def generate_data(bam_file_path, reference_file_path, vcf_path, bed_path, chromosome_name, start_position, end_position, output_dir, generate_from_vcf=False, runlength=False):
+#     """
+#     Generate pileups from BAM data, and collapse sequences to have no explicitly repeated characters. Additionally
+#     encode a repeat channel that describes the number of repeats observed per base.
+#     :param bam_file_path:
+#     :param reference_file_path:
+#     :param vcf_path:
+#     :param chromosome_name:
+#     :param start_position:
+#     :param end_position:
+#     :return:
+#     """
+#     if runlength:
+#         encode_window = generate_window_run_length_encoding
+#     else:
+#         encode_window = generate_window_encoding
+#
+#     if generate_from_vcf:
+#         chromosomal_windows = get_variant_windows(vcf_path=vcf_path,
+#                                                   chromosome_name=chromosome_name,
+#                                                   start_position=start_position,
+#                                                   end_position=end_position)
+#
+#     else:
+#         chromosomal_windows = get_non_variant_windows(vcf_path=vcf_path,
+#                                                       bed_path=bed_path,
+#                                                       chromosome_name=chromosome_name,
+#                                                       start_position=start_position,
+#                                                       end_position=end_position)
+#
+#     for chromosome_name in chromosomal_windows:
+#         for w,window in enumerate(chromosomal_windows[chromosome_name]):
+#             pileup_start = window[0]
+#             pileup_end = window[1]      # add random variation here
+#
+#             print(pileup_start, pileup_end)
+#
+#             encode_window(bam_file_path=bam_file_path,
+#                           reference_file_path=reference_file_path,
+#                           chromosome_name=chromosome_name,
+#                           window=window,
+#                           output_dir=output_dir,
+#                           save_data=True,
+#                           print_results=False,
+#                           plot_results=False)
 
-    if generate_from_vcf:
-        chromosomal_windows = get_variant_windows(vcf_path=vcf_path,
-                                                  chromosome_name=chromosome_name,
-                                                  start_position=start_position,
-                                                  end_position=end_position)
 
-    else:
-        chromosomal_windows = get_non_variant_windows(vcf_path=vcf_path,
-                                                      bed_path=bed_path,
-                                                      chromosome_name=chromosome_name,
-                                                      start_position=start_position,
-                                                      end_position=end_position)
-
-    for chromosome_name in chromosomal_windows:
-        for w,window in enumerate(chromosomal_windows[chromosome_name]):
-            pileup_start = window[0]
-            pileup_end = window[1]      # add random variation here
-
-            print(pileup_start, pileup_end)
-
-            encode_window(bam_file_path=bam_file_path,
-                          reference_file_path=reference_file_path,
-                          chromosome_name=chromosome_name,
-                          window=window,
-                          output_dir=output_dir,
-                          save_data=True,
-                          print_results=False,
-                          plot_results=False)
-
-
-def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir, save_data=True, print_results=False, plot_results=False, counter=None, n_chunks=None):
+def generate_window_fasta(bam_file_path, reference_file_path, chromosome_name, window, output_dir, exclude_loose_ends=True):
     """
     Run the pileup generator for a single specified window
     :param bam_file_path:
@@ -438,59 +443,169 @@ def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name
     :param window:
     :return:
     """
-    # bam_handler = BamHandler(bam_file_path)
-    # fasta_handler = FastaHandler(reference_file_path)
-    #
-    # pileup_start = window[0]
-    # pileup_end = window[1]      # add random variation here ?
-    #
-    # ref_sequence, read_ids, sequences = get_aligned_segments(fasta_handler=fasta_handler,
-    #                                                          bam_handler=bam_handler,
-    #                                                          chromosome_name=chromosome_name,
-    #                                                          pileup_start=pileup_start,
-    #                                                          pileup_end=pileup_end,
-    #                                                          include_ref=True)
-    #
-    # if sequences is None:
-    #     return
-    #
-    # alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence)
-    # ref_alignment = [ref_alignment]
-    #
-    # pileup_matrix = convert_alignments_to_matrix(alignments)
-    # reference_matrix = convert_aligned_reference_to_one_hot(ref_alignment)
-    #
-    # if plot_results:
-    #     plot_encodings(pileup_matrix=pileup_matrix, reference_matrix=reference_matrix)
-    #
-    # if print_results:
-    #     print_segments(ref_sequence, sequences)
-    #
-    #     for label, alignstring in alignments:
-    #         print("{0:15s} {1:s}".format(label, alignstring))
-    #
-    #     for label, alignstring in ref_alignment:
-    #         print("{0:15s} {1:s}".format(label, alignstring))
-    #
-    #     # visualize_matrix(pileup_matrix)
-    #     # visualize_matrix(reference_matrix)
-    #
-    # if ref_alignment[0][1].replace("-",'') != ref_sequence:
-    #     print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
-    #     print("unaligned:\t",ref_sequence)
-    #     print("aligned:\t",ref_alignment[0][1].replace("-",''))
-    #
-    # elif save_data:
-    #     save_training_data(output_dir=output_dir,
-    #                        pileup_matrix=pileup_matrix,
-    #                        reference_matrix=reference_matrix,
-    #                        chromosome_name=chromosome_name,
-    #                        start=pileup_start)
-    #
-    # if counter is not None:
-    #     counter.value += 1
-    #
-    #     sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
+    bam_handler = BamHandler(bam_file_path)
+    fasta_handler = FastaHandler(reference_file_path)
+
+    pileup_start = window[0]
+    pileup_end = window[1]      # add random variation here ?
+
+    reads_found = True
+
+    ref_sequence, read_ids, sequences, reversal_statuses = get_aligned_segments(fasta_handler=fasta_handler,
+                                                                                bam_handler=bam_handler,
+                                                                                chromosome_name=chromosome_name,
+                                                                                pileup_start=pileup_start,
+                                                                                pileup_end=pileup_end,
+                                                                                include_ref=True,
+                                                                                exclude_loose_ends=exclude_loose_ends)
+
+    if sequences is not None:
+        for sequence in sequences:
+            print(len(sequence))
+
+        print(len(ref_sequence))
+
+        FileManager.ensure_directory_exists(output_dir)
+        sequences_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1])]) + ".fasta"
+        sequences_output_path = os.path.join(output_dir,sequences_output_filename)
+        fasta_writer = FastaWriter(sequences_output_path)
+        fasta_writer.write_sequences(sequences)
+
+        ref_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1]), "ref"]) + ".fasta"
+        ref_output_path = os.path.join(output_dir,ref_output_filename)
+        fasta_writer = FastaWriter(ref_output_path)
+        fasta_writer.write_sequences([ref_sequence])
+
+        # print("saving sequences as fasta: ", sequences_output_path, ref_output_path)
+
+    else:
+        reads_found = False
+
+    return reads_found
+
+
+def generate_window_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir,
+                                        sort_sequences_by_length=False, reverse_sort=False, two_pass=False,
+                                        save_data=True, print_results=False, plot_results=False, counter=None,
+                                        n_chunks=None, save_to_fasta=False):
+    """
+    Run the pileup generator for a single specified window
+    :param bam_file_path:
+    :param reference_file_path:
+    :param chromosome_name:
+    :param window:
+    :return:
+    """
+    bam_handler = BamHandler(bam_file_path)
+    fasta_handler = FastaHandler(reference_file_path)
+
+    pileup_start = window[0]
+    pileup_end = window[1]      # add random variation here ?
+
+    ref_sequence, read_ids, sequences, reversal_statuses = get_aligned_segments(fasta_handler=fasta_handler,
+                                                                                bam_handler=bam_handler,
+                                                                                chromosome_name=chromosome_name,
+                                                                                pileup_start=pileup_start,
+                                                                                pileup_end=pileup_end,
+                                                                                include_ref=True)
+
+    if save_to_fasta:
+        FileManager.ensure_directory_exists(output_dir)
+        sequences_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1])]) + ".fasta"
+        sequences_output_path = os.path.join(output_dir,sequences_output_filename)
+        fasta_writer = FastaWriter(sequences_output_path)
+        fasta_writer.write_sequences(sequences)
+
+        ref_output_filename = '_'.join([chromosome_name, str(window[0]), str(window[1]), "ref"]) + ".fasta"
+        ref_output_path = os.path.join(output_dir,ref_output_filename)
+        fasta_writer = FastaWriter(ref_output_path)
+        fasta_writer.write_sequences([ref_sequence])
+
+        print("saving sequences as fasta: ", sequences_output_path, ref_output_path)
+
+    if sequences is None:
+        return
+
+    if sort_sequences_by_length:
+        for sequence in sequences:
+            print(sequence)
+        print()
+
+        sequences = sorted(sequences, key=lambda x: len(x), reverse=reverse_sort)
+        for sequence in sequences:
+            print(sequence)
+
+        print("ref",ref_sequence)
+
+    # ref_sequence = ref_sequence[0]
+
+    # print(ref_sequence)
+
+    alignments, ref_alignment = get_spoa_alignment(sequences=sequences, ref_sequence=ref_sequence, two_pass=two_pass)
+
+    pileup_matrix = convert_alignments_to_one_hot_tensor(alignments, fixed_coverage=False)
+
+    reference_matrix = convert_alignments_to_one_hot_tensor(ref_alignment, fixed_coverage=False)
+
+    reversal_matrix = convert_reversal_statuses_to_integer_matrix(reverse_statuses=reversal_statuses,
+                                                                  pileup_matrix=pileup_matrix)
+
+    pileup_repeat_matrix = numpy.ones(pileup_matrix.shape)
+    reference_repeat_matrix = numpy.ones(reference_matrix.shape)
+
+    if plot_results:
+        n_channels, height, width = pileup_matrix.shape
+
+        x_pileup = pileup_matrix.reshape([n_channels, height, width])
+        y_pileup = reference_matrix.reshape([5, 1, width])
+        x_repeat = numpy.ones([height, width])
+        y_repeat = numpy.ones([1, width])
+        reversal = reversal_matrix.reshape([height, width])
+
+        print(x_pileup.shape)
+        print(y_pileup.shape)
+        print(x_repeat.shape)
+        print(y_repeat.shape)
+        print(reversal.shape)
+
+        x_pileup_flat = flatten_one_hot_tensor(x_pileup)
+        y_pileup_flat = flatten_one_hot_tensor(y_pileup)
+        plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
+                                           x_repeat=x_repeat,
+                                           y_pileup=y_pileup_flat,
+                                           y_repeat=y_repeat,
+                                           reversal=reversal,
+                                           show_reversal=False,
+                                           label=True)
+
+    if print_results:
+        print_segments(ref_sequence, sequences)
+
+        for a, alignstring in enumerate(alignments):
+            print("{0:15s} {1:s}".format(str(a), alignstring))
+
+        for alignstring in ref_alignment:
+            print("{0:15s} {1:s}".format("ref", alignstring))
+
+    if ref_alignment[0].replace("-",'') != ref_sequence:
+        print("Aligned reference does not match true reference at [%d,%d]"%(pileup_start,pileup_end))
+        print("unaligned:\t",ref_sequence)
+        print("aligned:\t",ref_alignment[0][1].replace("-",''))
+
+    elif save_data:
+        save_run_length_training_data(output_dir=output_dir,
+                                      pileup_matrix=pileup_matrix,
+                                      reference_matrix=reference_matrix,
+                                      pileup_repeat_matrix=pileup_repeat_matrix,
+                                      reference_repeat_matrix=reference_repeat_matrix,
+                                      reversal_matrix=reversal_matrix,
+                                      chromosome_name=chromosome_name,
+                                      start=pileup_start)
+
+    if counter is not None:
+        counter.value += 1
+
+        sys.stdout.write('\r' + "%.2f%% Completed" % (100 * counter.value / n_chunks))
 
 
 def generate_window_run_length_encoding(bam_file_path, reference_file_path, chromosome_name, window, output_dir,
@@ -699,47 +814,6 @@ def compare_runlength_region(bam_file_path, reference_file_path, chromosome_name
                                             plot_results=True)
 
 
-def genomic_run():
-    output_root_dir = "output/"
-    instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
-    output_dir = os.path.join(output_root_dir, instance_dir)
-
-    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
-    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
-    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
-    # -------------------------------------------------------------------------
-
-    fasta_handler = FastaHandler(reference_file_path)
-
-    chromosomal_window_paths = ["/home/ryan/code/nanopore_assembly/output/window_selection/NC_003284.9_1000000_16718942_2018_10_15_0_38_27_259250",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_1000000_19924180_2018_10_14_22_34_30_383603",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003282.8_1000000_16493829_2018_10_14_20_52_58_386000",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003281.10_1000000_12783801_2018_10_14_19_37_55_657683",
-                                "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003280.10_1000000_14279421_2018_10_14_18_14_1_786141"]
-                                # "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205"]
-
-    for path in reversed(chromosomal_window_paths):
-        chromosome_name = "_".join(path.split("/")[-1].split("_")[0:2])
-        print("STARTING", chromosome_name)
-
-        region = [-1,-1]
-        runlength = True
-
-        encode_region_parallel(bam_file_path=bam_file_path,
-                               reference_file_path=reference_file_path,
-                               chromosome_name=chromosome_name,
-                               region=region,
-                               window_size=20,
-                               output_dir=output_dir,
-                               runlength=runlength,
-                               max_threads=30,
-                               windows_path=path,
-                               sort_sequences_by_length=False,
-                               reverse_sort=False,
-                               two_pass=True)
-
-
 def run_parameter_comparison():
     # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
     bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
@@ -791,6 +865,75 @@ def run_parameter_comparison():
     #                        two_pass=True)
 
 
+def generate_random_intervals(n_windows, window_size, chromosome_length):
+    windows = list()
+
+    for i in range(n_windows):
+        start = random.randint(0, (chromosome_length-window_size))
+
+        stop = start + window_size - 1
+
+        window = (start, stop)
+        windows.append(window)
+
+    return windows
+
+
+def genomic_run():
+    output_root_dir = "output/"
+    instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
+    output_dir = os.path.join(output_root_dir, instance_dir)
+
+    # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
+    # bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
+    # reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+    #
+    # chromosomal_window_paths = ["/home/ryan/code/nanopore_assembly/output/window_selection/NC_003284.9_1000000_16718942_2018_10_15_0_38_27_259250",
+    #                             "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_1000000_19924180_2018_10_14_22_34_30_383603",
+    #                             "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003282.8_1000000_16493829_2018_10_14_20_52_58_386000",
+    #                             "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003281.10_1000000_12783801_2018_10_14_19_37_55_657683",
+    #                             "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003280.10_1000000_14279421_2018_10_14_18_14_1_786141",
+    #                             "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205"]
+    #
+    # prefix_tokens = 2
+
+    # ---- Nanopore GUPPY - E. Coli - (dev machine) -------------------------
+    bam_file_path = "/home/ryan/data/Nanopore/ecoli/miten/r9_ecoli_reads_vs_ref.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/ecoli/miten/refEcoli.fasta"
+    windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/gi_1000000_3641652_2018_11_12_13_50_13_296242"
+
+    chromosomal_window_paths = ["/home/ryan/code/nanopore_assembly/output/window_selection/gi_1000000_3641652_2018_11_12_13_50_13_296242"]
+
+    prefix_tokens = 1
+
+    # -------------------------------------------------------------------------
+
+    for path in reversed(chromosomal_window_paths):
+        chromosome_name = "_".join(path.split("/")[-1].split("_")[0:prefix_tokens])
+        print("STARTING", chromosome_name)
+
+        region = [-1,-1]
+        runlength = True
+
+        print("USING RUNLENGTH: ", runlength)
+
+        encode_region_parallel(bam_file_path=bam_file_path,
+                               reference_file_path=reference_file_path,
+                               chromosome_name=chromosome_name,
+                               region=region,
+                               window_size=20,
+                               output_dir=output_dir,
+                               runlength=runlength,
+                               max_threads=30,
+                               windows_path=path,
+                               sort_sequences_by_length=False,
+                               reverse_sort=False,
+                               two_pass=True)
+
+    print()
+
+
 def main():
     output_root_dir = "output/"
     instance_dir = "spoa_pileup_generation_" + get_current_timestamp()
@@ -815,18 +958,35 @@ def main():
     # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
 
     # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
-    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
-    windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+    # bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.bam"
+    # reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # windows_path = "/home/ryan/code/nanopore_assembly/output/window_selection/NC_003283.11_0_20924180_2018_9_28_10_56"
+
+    # ---- Nanopore GUPPY - E. Coli - (dev machine) -------------------------
+    # bam_file_path = "/home/ryan/data/Nanopore/ecoli/miten/r9_ecoli.contigs.fasta.reads.sorted.bam"
+    bam_file_path = "/home/ryan/data/Nanopore/ecoli/miten/r9_ecoli_reads_vs_ref.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/ecoli/miten/refEcoli.fasta"
+    # reference_file_path = "/home/ryan/data/Nanopore/ecoli/miten/r9_ecoli.contigs.fasta"
+
     # -------------------------------------------------------------------------
 
     fasta_handler = FastaHandler(reference_file_path)
     contig_names = fasta_handler.get_contig_names()
 
-    chromosome_name = "NC_003279.8"     # celegans chr1
+
+    chromosome_name = "gi"     # E coli
+    # chromosome_name = "NC_003279.8"     # celegans chr1
     # chromosome_name = "NC_003283.11"     # celegans chr5
     # chromosome_name = "1"
     # chromosome_name = "chr" + chromosome_name
+
+    lengths = list()
+    for name in contig_names:
+        chromosome_length = fasta_handler.get_chr_sequence_length(name)
+        lengths.append(chromosome_length)
+
+    print('\t'.join(contig_names))
+    print('\t\t'.join(map(str,lengths)))
 
     chromosome_length = fasta_handler.get_chr_sequence_length(chromosome_name)
 
@@ -842,53 +1002,90 @@ def main():
     # window = [246567, 246587]     # previously failing test case for collapsed reads
     # window = [800000, 800020]
 
-    # test sites for misalignment
+    ## test sites for misalignment
     # windows = [[10029532, 10029532+83],
-    #           [10031827, 10031827+34],
-    #           [10039004, 10039004+25],
-    #           [10040234, 10040234+61],
-    #           [1004298, 1004298+109],
-    #           [10044514, 10044514+54],
-    #           [10037167, 10037167+82],
-    #           [14952118-5, 14952118+20]]
+    #            [10031827, 10031827+34],
+    #            [10039004, 10039004+25],
+    #            [10040234, 10040234+61],
+    #            [1004298, 1004298+109],
+    #            [10044514, 10044514+54],
+    #            [10037167, 10037167+82],
+    #            [14952118-5, 14952118+20]]
+    #
+    # use_runlength = False
     #
     # for window in windows:
-    #     generate_window_run_length_encoding(bam_file_path=bam_file_path,
+    #     if use_runlength:
+    #         generate_window_run_length_encoding(bam_file_path=bam_file_path,
+    #                                             reference_file_path=reference_file_path,
+    #                                             chromosome_name=chromosome_name,
+    #                                             window=window,
+    #                                             output_dir=output_dir,
+    #                                             sort_sequences_by_length=False,
+    #                                             reverse_sort=False,
+    #                                             two_pass=True,
+    #                                             plot_results=False,
+    #                                             print_results=True,
+    #                                             save_data=False,
+    #                                             save_to_fasta=True)
+    #     else:
+    #         generate_window_encoding(bam_file_path=bam_file_path,
+    #                                  reference_file_path=reference_file_path,
+    #                                  chromosome_name=chromosome_name,
+    #                                  window=window,
+    #                                  output_dir=output_dir,
+    #                                  sort_sequences_by_length=False,
+    #                                  reverse_sort=False,
+    #                                  two_pass=True,
+    #                                  plot_results=True,
+    #                                  print_results=True,
+    #                                  save_data=False,
+    #                                  save_to_fasta=True)
+
+    # ---- generate random windows ---------------------------------------------
+
+    # windows = set(map(tuple,load_windows("/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205")))
+    # n_windows = 2000
+    #
+    # for i in range(n_windows):
+    #     sys.stdout.write("\r %.3f" % 100*(float(i)/n_windows))
+    #     window = windows.pop()
+    #
+    #     # print("GENERATING WINDOW: ", window)
+    #
+    #     generate_window_fasta(bam_file_path=bam_file_path,
+    #                           reference_file_path=reference_file_path,
+    #                           chromosome_name=chromosome_name,
+    #                           window=window,
+    #                           output_dir=output_dir)
+
+
+    # ---- generate random windows ---------------------------------------------
+
+    # n_windows = 20
+    # window_size = 10000
+    #
+    # i = 0
+    # while i < n_windows:
+    #     sys.stdout.write("\r %.3f" % (100*(float(i)/n_windows)))
+    #
+    #     start = random.randint(0, (chromosome_length-window_size))
+    #     stop = start + window_size - 1
+    #
+    #     window = (start, stop)
+    #
+    #     print("\nGENERATING WINDOW: ", window)
+    #
+    #     reads_found = generate_window_fasta(bam_file_path=bam_file_path,
     #                                         reference_file_path=reference_file_path,
     #                                         chromosome_name=chromosome_name,
     #                                         window=window,
     #                                         output_dir=output_dir,
-    #                                         sort_sequences_by_length=False,
-    #                                         reverse_sort=False,
-    #                                         two_pass=True,
-    #                                         plot_results=False,
-    #                                         print_results=True,
-    #                                         save_data=False,
-    #                                         save_to_fasta=True)
+    #                                         exclude_loose_ends=False)
+    #
+    #     if reads_found:
+    #         i += 1
 
-    # ---- generate random windows ---------------------------------------------
-
-    import random
-
-    windows = load_windows("/home/ryan/code/nanopore_assembly/output/window_selection/NC_003279.8_1000000_14072434_2018_10_14_16_50_51_752205")
-
-    for i in range(20):
-        window = random.choice(windows)
-
-        print("GENERATING WINDOW: ", window)
-
-        generate_window_run_length_encoding(bam_file_path=bam_file_path,
-                                            reference_file_path=reference_file_path,
-                                            chromosome_name=chromosome_name,
-                                            window=window,
-                                            output_dir=output_dir,
-                                            sort_sequences_by_length=False,
-                                            reverse_sort=False,
-                                            two_pass=True,
-                                            plot_results=False,
-                                            print_results=True,
-                                            save_data=False,
-                                            save_to_fasta=True)
 
     # ---- TEST region --------------------------------------------------------
 
@@ -937,6 +1134,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-    # genomic_run()
+    # main()
+    genomic_run()
     # run_parameter_comparison()

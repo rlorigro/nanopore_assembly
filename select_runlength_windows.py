@@ -260,8 +260,13 @@ def main():
     # bed_path = "/home/ryan/data/GIAB/NA12878_GRCh38_confident.bed"
 
     # ---- Nanopore GUPPY - C ELEGANS - (dev machine) -------------------------
-    bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.filtered2820.bam"
-    reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+    # bam_file_path = "/home/ryan/data/Nanopore/celegans/all_chips_20k_Boreal_minimap2.sorted.filtered2820.bam"
+    # reference_file_path = "/home/ryan/data/Nanopore/celegans/GCF_000002985.6_WBcel235_genomic.fasta"
+
+    # ---- Nanopore GUPPY - E. Coli - (dev machine) -------------------------
+    bam_file_path = "/home/ryan/data/Nanopore/ecoli/miten/r9_ecoli_reads_vs_ref.bam"
+    reference_file_path = "/home/ryan/data/Nanopore/ecoli/miten/refEcoli.fasta"
+
     # -------------------------------------------------------------------------
 
     fasta_handler = FastaHandler(reference_file_path)
@@ -333,6 +338,8 @@ def main():
             gc.collect()
             with Pool(processes=max_threads) as pool:
                 pool.starmap(select_windows, arg_pool)
+
+    print()
 
 
 if __name__ == "__main__":

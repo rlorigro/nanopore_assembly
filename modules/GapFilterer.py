@@ -7,10 +7,11 @@ from handlers.DataLoaderRunlength import DataLoader
 from models.SimpleRnn import Decoder
 import torch
 import numpy
+import gc
 
 
 class GapFilterer:
-    def __init__(self, model_state_path=None, threshold=0.005):
+    def __init__(self, model_state_path=None, threshold=0.005, use_gpu=True):
         if model_state_path is None:
             self.model_state_path = "/home/ryan/code/nanopore_assembly/models/parameters/filter_RNN_model_state_trained_chr5_celegans_1800_windows"
         else:
@@ -34,9 +35,16 @@ class GapFilterer:
 
         self.model.load_state_dict(torch.load(self.model_state_path))
 
+        self.use_gpu = use_gpu
+
         self.model.eval()
 
+        gc.collect()
+
     def generate_filter_mask(self, x_pileup, y_pileup, x_repeat, reversal):
+        if self.use_gpu:
+            self.model.cuda()
+
         # (n,h,w) shape
         n_channels, height, width = x_pileup.shape
 
@@ -49,8 +57,13 @@ class GapFilterer:
         # print(x_pileup_distribution.shape)
         # print(x_repeat_distribution.shape)
 
-        x_pileup_distribution = torch.FloatTensor(x_pileup_distribution)
-        x_repeat_distribution = torch.FloatTensor(x_repeat_distribution)
+        if self.use_gpu:
+            x_pileup_distribution = torch.cuda.FloatTensor(x_pileup_distribution)
+            x_repeat_distribution = torch.cuda.FloatTensor(x_repeat_distribution)
+
+        else:
+            x_pileup_distribution = torch.FloatTensor(x_pileup_distribution)
+            x_repeat_distribution = torch.FloatTensor(x_repeat_distribution)
 
         # print()
         # print("X PILEUP",x_pileup.shape)
@@ -61,6 +74,9 @@ class GapFilterer:
         x = torch.cat([x_pileup_distribution, x_repeat_distribution], dim=2).reshape([1, 61, width])
 
         y_pileup_predict = self.model.forward(x)
+
+        if self.use_gpu:
+            y_pileup_predict = y_pileup_predict.cpu()
 
         gap_filter_mask = (y_pileup_predict.detach().numpy().reshape([width]) > self.threshold)
 

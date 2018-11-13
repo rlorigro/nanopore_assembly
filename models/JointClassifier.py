@@ -12,7 +12,8 @@ import csv
 
 
 # JOINT_DISTRIBUTION_PATH = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_10_3_8_21.pkl"
-JOINT_DISTRIBUTION_PATH = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_10_16_10_23_38_123997.pkl"    # transition anchored windows
+# JOINT_DISTRIBUTION_PATH = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_10_16_10_23_38_123997.pkl"    # transition anchored windows
+JOINT_DISTRIBUTION_PATH = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_10_21_13_24_32_964551.pkl"
 
 
 class JointClassifier:

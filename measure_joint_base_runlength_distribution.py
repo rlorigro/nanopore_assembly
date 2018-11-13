@@ -9,11 +9,12 @@ from matplotlib import pyplot
 from multiprocessing import Pool
 import multiprocessing
 from tqdm import tqdm
+import random
 import pickle
 import numpy
 import sys
 import os
-
+import gc
 
 numpy.set_printoptions(linewidth=400, threshold=100000, suppress=True, precision=3)
 
@@ -65,7 +66,7 @@ def load_base_frequency_matrices(path):
 
     for base in matrix_labels:
         matrix = numpy.load(path)[base]
-        matrix = matrix[1:, 1:]  # trim 0 columns (for now)
+        # matrix = matrix[1:, 1:]  # trim 0 columns (for now)
 
         base_frequency_matrices[base] = matrix
 
@@ -157,8 +158,19 @@ def generate_training_data(data_loader, batch_size, consensus_caller, output_dir
         # print("REVERSAL", reversal.shape)
 
         if gap_filterer is not None:
-            batch = gap_filterer.filter_batch(batch, plot=False)
-            x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+            try:
+                batch = gap_filterer.filter_batch(batch, plot=False)
+                x_pileup, y_pileup, x_repeat, y_repeat, reversal = batch
+
+            except ValueError as e:
+                print("ERROR:", e)
+                print("X PILEUP", x_pileup.shape)
+                print("Y PILEUP", y_pileup.shape)
+                print("X REPEAT", x_repeat.shape)
+                print("Y REPEAT", y_repeat.shape)
+                print("REVERSAL", reversal.shape)
+
+                continue
 
         # (n,h,w) shape
         batch_size, n_channels, height, width = x_pileup.shape
@@ -246,8 +258,8 @@ def normalize_frequency_matrix(frequency_matrix, log_scale):
     return probability_matrix
 
 
-def run_train_from_pileups():
-    max_threads = 30
+def run_generate_tuples_from_pileups():
+    max_threads = 6
 
     # NC_003279.8         Caenorhabditis elegans chromosome I
     # NC_003280.10     Caenorhabditis elegans chromosome II
@@ -257,12 +269,14 @@ def run_train_from_pileups():
     # NC_003284.9        Caenorhabditis elegans chromosome X
     # NC_001328.1        Caenorhabditis elegans mitochondrion, complete genome
 
-    data_path = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8",
-                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003280.10",
-                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003281.10",
-                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003282.8",
-                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003283.11",
-                 "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003284.9"]
+    # data_path = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003279.8",
+    #              "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003280.10",
+    #              "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003281.10",
+    #              "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003282.8",
+    #              "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003283.11",
+    #              "/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-10-15-13-10-33-0-288/NC_003284.9"]
+
+    data_path = ["/home/ryan/code/nanopore_assembly/output/spoa_pileup_generation_2018-11-12-14-8-24-0-316/gi"]
 
     args = list()
     for path in data_path:
@@ -283,7 +297,16 @@ def run_train_from_pileups():
 
         args.append([data_loader, batch_size, consensus_caller, output_dir, filename_suffix, gap_filterer])
 
+        gap_filterer = None
+
+        gc.collect()
+
     n_threads = min(len(args), max_threads)
+
+    for arg in args:
+        print(arg)
+    print(n_threads)
+
     with Pool(processes=n_threads) as pool:
         pool.starmap(generate_training_data, args)
 
@@ -313,6 +336,9 @@ def run_joint_frequency_matrix_generation_from_pickle():
                 # if observed_base == "C" and observed_length == 4 and true_length == 16:
                 #     print(p)
 
+                # if true_length == 0:
+                #     print(observed_length, true_length)
+
                 observed_length = min(observed_length, max_runlength)
                 true_length = min(true_length, max_runlength)
 
@@ -339,21 +365,35 @@ def run_joint_frequency_matrix_generation_from_pickle():
 def run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False):
     max_runlength = 50
 
-    directories = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_11_560358",
-                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_12_855103",
-                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_9_946240",
-                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_7_713553",
-                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_6_593646",
-                   "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_8_668369"]
+    # directories = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_11_560358",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_12_855103",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_9_946240",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_7_713553",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_6_593646",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_8_668369"]
+
+    # directories = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_40_980920/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_42_138805/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_43_176010/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_44_574894/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_46_366545/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_47_822627/"]
+
+    directories = ["output/joint_runlength_base_model/2018_11_12_14_23_56_638745/"]
 
     all_paths = list()
     for dir in directories:
         paths = FileManager.get_all_file_paths_by_type(parent_directory_path=dir, file_extension=".pkl")
         all_paths.extend(paths)
+        print(len(all_paths))
 
-    frequency_matrices = defaultdict(lambda: numpy.zeros([max_runlength+1, max_runlength+1])) # include 0 as a possible runlength
+    frequency_matrices = {"A":numpy.zeros([max_runlength+1, max_runlength+1]),
+                          "G":numpy.zeros([max_runlength+1, max_runlength+1]),
+                          "T":numpy.zeros([max_runlength+1, max_runlength+1]),
+                          "C":numpy.zeros([max_runlength+1, max_runlength+1])} # include 0 as a possible runlength
 
     print("loaded paths: ", len(all_paths))
+
     cutoff = sys.maxsize
     for p,path in enumerate(all_paths):
         with open(path, 'rb') as pickle_file:
@@ -368,37 +408,56 @@ def run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False):
                 observed_base, observed_length = observed_tuple
                 true_base, true_length = true_tuple
 
-                if filter_mismatch:
-                    if observed_base != true_base:
-                        continue
-
                 observed_length = min(observed_length, max_runlength)
                 true_length = min(true_length, max_runlength)
 
-                frequency_matrices[true_base][true_length, observed_length] += 1    # i prefer [y,x] convention, and it plots correctly
+                if true_base == "-" and observed_base != "-":
+                    true_base = observed_base
+                    frequency_matrices[true_base][true_length, observed_length] += 1    # prefer [y,x] convention, and it plots correctly
+
+                elif true_base == "-" and observed_base == "-":
+                    for split_base in ["A", "G", "T", "C"]:
+                        # add 0:0 counts to all bases
+                        frequency_matrices[split_base][true_length, observed_length] += 1
+
+                elif true_base != "-" and observed_base == "-":
+
+                    frequency_matrices[true_base][true_length, observed_length] += 1
+
+                else:
+
+                    frequency_matrices[true_base][true_length, observed_length] += 1
 
         if p == cutoff:
             break
 
-    plot_frequency_matrices(frequency_matrices)
+    for base in ["A", "G", "T", "C"]:
+        print(base)
+        print(frequency_matrices[base])
+
+    # plot_frequency_matrices(frequency_matrices)
 
     output_dir = "/home/ryan/code/nanopore_assembly/models/parameters/"
     filename = "runlength_frequency_matrices_per_base_" + FileManager.get_datetime_string()
 
+    print("SAVING: ", output_dir+filename)
+
     save_numpy_matrices(output_dir=output_dir, filename=filename, matrices=frequency_matrices)
 
     # frequency_matrices = load_base_frequency_matrices(os.path.join(output_dir,filename+".npz"))
-    #
-    # plot_frequency_matrices(frequency_matrices)
+
+    plot_frequency_matrices(frequency_matrices)
 
 
 def run_batch_training_from_tuples():
-    chr_paths = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_11_560358",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_12_855103",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_9_946240",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_7_713553",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_6_593646",
-                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_15_21_52_8_668369"]
+    # chr_paths = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_40_980920/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_42_138805/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_43_176010/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_44_574894/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_46_366545/",
+    #                "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_47_822627/"]
+
+    chr_paths = ["output/joint_runlength_base_model/2018_11_12_14_23_56_638745/"]
 
     trainer = JointClassifierTrainer()
 
@@ -418,31 +477,192 @@ def run_batch_training_from_tuples():
 
     FileManager.save_object_pickle(object=distribution, filename=distribution_filename, output_dir=distribution_output_dir)
 
+
+def plot_joint_distribution(distribution, save=False):
+    base_distributions = defaultdict(lambda: numpy.zeros([max_runlength + 1, max_runlength + 1]))
+
+    print(len(distribution))
+
     max_runlength = 50
-    for base in ["A", "G", "T", "C"]:
-        base_self_distribution = numpy.zeros([max_runlength, max_runlength])
+    for true_base in ["A", "G", "T", "C", "-"]:
+        # base_self_distribution = numpy.zeros([max_runlength + 1, max_runlength + 1])
 
-        for r_x, observed_repeat in enumerate(range(1, max_runlength+1)):
-            for r_y, true_repeat in enumerate(range(1, max_runlength+1)):
-                key = ((base, observed_repeat),(base, true_repeat))
+        for observed_base in ["A", "G", "T", "C", "-"]:
+            for r_x, observed_repeat in enumerate(range(0, max_runlength+1)):
+                for r_y, true_repeat in enumerate(range(0, max_runlength+1)):
 
-                probability = distribution[key]
+                    key = ((observed_base, observed_repeat),(true_base, true_repeat))
 
-                base_self_distribution[r_y,r_x] = probability
+                    if key in distribution:
+                        probability = distribution[key]
 
-        base_self_distribution = normalize_frequency_matrix(base_self_distribution, log_scale=True)
-        pyplot.title(base+":"+ base +" Log probabilities")
-        pyplot.imshow(base_self_distribution)
+                        if true_base == "-" and observed_base != "-":
+                            base_distributions[observed_base][r_y, r_x] += probability
+
+                        elif true_base == "-" and observed_base == "-":
+                            for split_base in ["A", "G", "T", "C"]:
+                                base_distributions[split_base][r_y, r_x] += probability
+
+                        else:
+                            base_distributions[true_base][r_y,r_x] += probability
+
+    # base_distributions["A"][25, 0] += 999999
+
+    for base in base_distributions:
+        axes = pyplot.axes()
+        base_distribution = normalize_frequency_matrix(base_distributions[base], log_scale=True)
+        pyplot.title(base + ":" + base + " Log probabilities")
+        pyplot.imshow(numpy.log10(base_distributions[base]))
+
+        axes.set_xlabel("Observed length")
+        axes.set_ylabel("True length")
         pyplot.show()
         pyplot.close()
 
+    if save:
+        output_dir = "/home/ryan/code/nanopore_assembly/models/parameters/"
+        filename = "runlength_frequency_matrices_per_base_" + FileManager.get_datetime_string()
 
-if __name__ == "__main__":
-    # run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False)
-    run_train_from_pileups()
+        print("SAVING: ", output_dir + filename)
+
+        save_numpy_matrices(output_dir=output_dir, filename=filename, matrices=base_distributions)
+
+
+def plot_joint_distribution_for_all_transitions(distribution):
+    base_distributions = defaultdict(lambda: defaultdict(lambda: numpy.zeros([max_runlength + 1, max_runlength + 1])))
+
+    print(len(distribution))
+
+    max_runlength = 30
+    for true_base in ["A", "G", "T", "C", "-"]:
+        # base_self_distribution = numpy.zeros([max_runlength + 1, max_runlength + 1])
+
+        for observed_base in ["A", "G", "T", "C", "-"]:
+            for r_x, observed_repeat in enumerate(range(0, max_runlength+1)):
+                for r_y, true_repeat in enumerate(range(0, max_runlength+1)):
+
+                    key = ((observed_base, observed_repeat),(true_base, true_repeat))
+
+                    if key in distribution:
+                        probability = distribution[key]
+
+                        base_distributions[true_base][observed_base][r_y,r_x] += probability
+
+    for true_base in ["A", "G", "T", "C", "-"]:
+        # base_self_distribution = numpy.zeros([max_runlength + 1, max_runlength + 1])
+
+        for observed_base in ["A", "G", "T", "C", "-"]:
+            fig = pyplot.figure()
+            axes = pyplot.axes()
+            fig.set_size_inches(12, 12)
+
+            for r_x, observed_repeat in enumerate(range(0, max_runlength + 1)):
+                for r_y, true_repeat in enumerate(range(0, max_runlength + 1)):
+                    probability = base_distributions[true_base][observed_base][r_y,r_x]
+                    pyplot.text(r_x,r_y,str(round(numpy.log10(probability),2)), fontsize=6, ha="center", va="center")
+
+            pyplot.title("True=" + true_base + ", Observed=" + observed_base + " log10 probabilities")
+            pyplot.imshow(numpy.log10(base_distributions[true_base][observed_base]))
+
+            axes.set_xlabel("Observed length")
+            axes.set_ylabel("True length")
+
+            pyplot.savefig("True_" + true_base + "_Observed_" + observed_base + "_probabilities.png")
+
+            pyplot.show()
+            pyplot.close()
+
+    # base_distributions["A"][25, 0] += 999999
+
+    # for base in base_distributions:
+    #     base_distribution = normalize_frequency_matrix(base_distributions[base], log_scale=True)
+    #     pyplot.title(base + ":" + base + " Log probabilities")
+    #     pyplot.imshow(numpy.log10(base_distributions[base]))
+    #     pyplot.show()
+    #     pyplot.close()
+
+
+def print_joint_distribution():
+    max_runlength = 50
+
+    chr_paths = ["/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_40_980920/",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_42_138805/",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_43_176010/",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_44_574894/",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_46_366545/",
+                 "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/2018_10_20_13_47_47_822627/"]
+
+    trainer = JointClassifierTrainer()
+
+    all_file_paths = list()
+    for p,path in enumerate(chr_paths):
+        file_paths = FileManager.get_all_file_paths_by_type(parent_directory_path=path, file_extension=".pkl")
+        all_file_paths.extend(file_paths)
+
+        # if p == 1:
+        #     break
+
+    counts = trainer.get_counts_from_tuples(paths=all_file_paths)
+
+    header = '\t'.join(["observed_base", "observed_repeat", "true_base", "true_repeat", "count"])
+
+    print(header)
+
+    for true_base in ["A", "G", "T", "C", "-"]:
+        for observed_base in  ["A", "G", "T", "C", "-"]:
+            for r_x, observed_repeat in enumerate(range(0, max_runlength+1)):
+                for r_y, true_repeat in enumerate(range(0, max_runlength+1)):
+                    key = ((observed_base, observed_repeat),(true_base, true_repeat))
+                    count = counts[key]
+
+                    line = '\t'.join([observed_base, str(observed_repeat), true_base, str(true_repeat), str(count)])
+
+                    print(line)
+
+
+def main():
+    run_base_frequency_matrix_generation_from_tuples(filter_mismatch=False)
+    # run_generate_tuples_from_pileups()
     # run_batch_training_from_tuples()
+
+    # Joint dirichlet distribution
+    # path = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_10_21_13_24_32_964551.pkl" # c elegans filtered
+    path = "/home/ryan/code/nanopore_assembly/output/joint_runlength_base_model/distribution/distribution_2018_11_12_14_47_47_46658.pkl" # e coli filtered
+
+    # with open(path, 'rb') as pickle_file:
+    #     distribution = pickle.load(pickle_file)
+
+    plot_joint_distribution_for_all_transitions(distribution)
+
+    # # frequencies of all pairwise observations (POA filtered by RNN)
+    # path = "/home/ryan/code/nanopore_assembly/models/parameters/joint_frequencies_chr1-6_celegans_filtered_POA.txt"
+
+    # distribution = dict()
+    # with open(path, "r") as file:
+    #     for l,line in enumerate(file):
+    #         if l > 0:
+    #             line = line.strip().split("\t")
+    #             observed_base, observed_repeat, true_base, true_repeat, count = line
+    #
+    #             observed_repeat = int(observed_repeat)
+    #             true_repeat = int(true_repeat)
+    #             count = int(count)
+    #
+    #             key = ((observed_base, observed_repeat), (true_base, true_repeat))
+    #
+    #             # print(key, count)
+    #
+    #             distribution[key] = count
+
+    # plot_joint_distribution(distribution, save=True)
+
+    # print_joint_distribution()
 
     # path = "/home/ryan/code/nanopore_assembly/models/parameters/runlength_frequency_matrices_per_base_2018-9-20-14-21-6.npz"
     #
     # frequency_matrices = load_base_frequency_matrices(path)
     # plot_frequency_matrices(frequency_matrices)
+
+
+if __name__ == "__main__":
+    main()

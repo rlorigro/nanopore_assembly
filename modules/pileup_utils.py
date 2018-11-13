@@ -7,7 +7,7 @@ from matplotlib import pyplot
 import torch
 import numpy
 
-scale = numpy.arange(0, 1.0, 1 / 5)
+scale = numpy.arange(0, 5, 1)
 
 sequence_to_float = {"-":0.02,
                      "A":0.2,
@@ -48,14 +48,14 @@ def complement(base):
 def label_pileup_encoding_plot(matrix, axis):
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
-            value = numpy.round(matrix[i,j],3)
+            value = int(numpy.round(matrix[i,j],3))
+            #
+            # if value == 0:
+            #     index = 0
+            # else:
+            #     index = float_to_index[value]
 
-            if value == 0:
-                index = 0
-            else:
-                index = float_to_index[value]
-
-            character = index_to_sequence[index]
+            character = index_to_sequence[value]
 
             axis.text(j,i,character, ha="center", va="center", fontsize=6)
 
@@ -233,6 +233,9 @@ def get_joint_base_runlength_observations_vs_truth(x_pileup, x_repeat, y_pileup,
 
             diff += abs(true_repeat-observed_repeat)
 
+            # if true_repeat == 0:
+            #     print(((observed_base, observed_repeat),(true_base, true_repeat)))
+
             if base_reversed:
                 observed_base = complement(observed_base)
                 true_base = complement(true_base)
@@ -248,7 +251,7 @@ def get_joint_base_runlength_observations_vs_truth(x_pileup, x_repeat, y_pileup,
             #     DEBUG_WEIRD_IMAGE = True
 
     if DEBUG_WEIRD_IMAGE:
-        print(path)
+        # print(path)
         x_pileup_flat = flatten_one_hot_tensor(x_pileup)
         y_pileup_flat = flatten_one_hot_tensor(y_pileup)
         plot_runlength_prediction_stranded(x_pileup=x_pileup_flat,
@@ -455,16 +458,16 @@ def convert_alignments_to_matrix(alignments, fixed_coverage=True):
     return matrix
 
 
-def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_coverage=True, numpy_type=numpy.float64):
+def convert_alignments_to_one_hot_tensor(alignments, fixed_coverage=True, numpy_type=numpy.float64):
     if fixed_coverage:
         n = MAX_COVERAGE
     else:
         n = len(alignments)
+
     m = len(alignments[0])
     c = len(index_to_sequence)
 
     base_matrix = numpy.zeros([c,n,m], dtype=numpy_type)
-    repeat_matrix = numpy.zeros([1,n,m])
 
     for n_index,alignment in enumerate(alignments):
         repeat_index = 0
@@ -474,16 +477,12 @@ def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_co
             base_matrix[c_index,n_index,m_index] = 1
 
             if character != "-":
-                repeat_matrix[0,n_index,m_index] = repeats[n_index][repeat_index]
                 repeat_index += 1
 
     if base_matrix.ndim < 3:
         base_matrix = base_matrix.reshape([c,n,m])
 
-    if repeat_matrix.ndim < 3:
-        repeat_matrix = repeat_matrix.reshape([1,n,m])
-
-    return base_matrix, repeat_matrix
+    return base_matrix
 
 
 def convert_collapsed_alignments_to_one_hot_tensor(alignments, repeats, fixed_coverage=True, numpy_type=numpy.float64):

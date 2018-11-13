@@ -9,7 +9,7 @@ DEFAULT_MIN_MAP_QUALITY = 5
 
 
 class SegmentGrabber:
-    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads, padding=None, padding_end_offset=1):
+    def __init__(self, chromosome_name, start_position, end_position, ref_sequence, reads, padding=None, padding_end_offset=1, exclude_loose_ends=True):
         # candidate finder includes end position, so should the reference sequence
         self.chromosome_name = chromosome_name
         self.start_position = start_position
@@ -19,6 +19,7 @@ class SegmentGrabber:
         self.max_coverage = MAX_COVERAGE
         self.padding = padding
         self.padding_end_offset = padding_end_offset
+        self.exclude_loose_ends = exclude_loose_ends
 
         self.reads = reads
 
@@ -71,7 +72,7 @@ class SegmentGrabber:
         if read_id in self.read_start_indices:
             print("WARNING: read_id hash conflict", read_id)
 
-        for cigar in cigar_tuples:
+        for c,cigar in enumerate(cigar_tuples):
             cigar_code = cigar[0]
             length = cigar[1]
 
@@ -101,7 +102,7 @@ class SegmentGrabber:
             read_index += read_index_increment
             ref_index += ref_index_increment
 
-            if completion_status:
+            if completion_status or c == len(cigar_tuples) - 1:
                 start_index = self.read_start_indices[read_id]
                 end_index = self.read_end_indices[read_id]
 
@@ -109,20 +110,34 @@ class SegmentGrabber:
                 segment_alignment_end = self.read_alignment_ends[read_id]
 
                 # to simulate Paolo Carnevali's data, all reads should span the full region, match on start and end pos.
-                if segment_alignment_start == self.start_position and segment_alignment_end == self.end_position:
+                if self.exclude_loose_ends:
+                    if segment_alignment_start == self.start_position and segment_alignment_end == self.end_position:
+                        if self.padding is not None and self.padding_end_offset is not None:
+                            # print(start_index - self.padding, end_index + self.padding + self.padding_end_offset)
+                            # print(start_index, end_index)
+                            # print(read_sequence[start_index - self.padding:end_index + self.padding + self.padding_end_offset + 1])
+                            # print(self.padding*" "+read_sequence[start_index:end_index + 1])
+
+                            start_index = start_index - self.padding
+                            end_index = end_index + self.padding + self.padding_end_offset
+
+                        sequence = read_sequence[start_index:end_index + 1]
+
+                        if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR*self.window_size:
+                            self.sequences[read_id] = sequence
+
+                else:
                     if self.padding is not None and self.padding_end_offset is not None:
-                        # print(start_index - self.padding, end_index + self.padding + self.padding_end_offset)
-                        # print(start_index, end_index)
-                        # print(read_sequence[start_index - self.padding:end_index + self.padding + self.padding_end_offset + 1])
-                        # print(self.padding*" "+read_sequence[start_index:end_index + 1])
 
                         start_index = start_index - self.padding
                         end_index = end_index + self.padding + self.padding_end_offset
 
                     sequence = read_sequence[start_index:end_index + 1]
 
-                    if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR*self.window_size:
+                    if len(sequence) < SEQUENCE_LENGTH_CUTOFF_FACTOR * self.window_size:
                         self.sequences[read_id] = sequence
+                    else:
+                        print("excessive read length found for region", len(sequence), self.window_size)
 
                 # if the read segment has been obtained then fetch its directionality (Forward/Reverse), True if Reverse
                 self.reversal_status[read_id] = read.is_reverse
